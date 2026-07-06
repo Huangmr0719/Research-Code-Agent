@@ -9,6 +9,7 @@
 - log capture
 - summary.json / summary.md
 - on-demand OpenCode analysis
+- project_results_adapter（项目级 metrics 适配）
 - toy success / failed / interrupted tests
 - Feishu smoke test
 
@@ -49,6 +50,7 @@ tools/
   feishu_notify.py
   summarize_experiment.py
   analyze_with_agent.py
+  project_results_adapter.py
   test_feishu_notify.sh
 logs/
 outputs/
@@ -190,6 +192,30 @@ If `metrics.json` or `result.json` exists, JSON metrics are preferred. Otherwise
 - `loss`
 - `val_loss`
 - `best_epoch`
+
+## Project Results Adapter
+
+`tools/project_results_adapter.py` is a project-level metrics adapter template.
+
+When a baseline project already produces structured metrics (e.g., `outputs/metrics.json`), the adapter extracts them before fallback to log regex.
+
+Example `outputs/metrics.json`:
+
+```json
+{
+  "metrics": {
+    "UF1": 0.82,
+    "UAR": 0.80,
+    "loss": 0.41
+  }
+}
+```
+
+After running the wrapper, `summary.json` and the Feishu card will show these metrics with `metrics_source: adapter`.
+
+If the adapter fails or finds no structured file, `summarize_experiment.py` falls back to `metrics.json` / `result.json` / log regex.  Adapter failure never blocks summary generation, OpenCode analysis, or Feishu notification.
+
+Adapt `project_results_adapter.py` to each baseline project's output format.  Do NOT commit project-specific logic back into the mother template repository.
 
 ## Agent Analysis
 

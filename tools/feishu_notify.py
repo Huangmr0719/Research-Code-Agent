@@ -232,6 +232,10 @@ def load_payload_data(args: argparse.Namespace) -> Dict[str, Any]:
     log_tail = join_tail(summary.get("log_tail")) or read_text(args.tail_log)
     note = first_present(summary.get("note"), metadata.get("note"), default="未填写")
     summary_path = fallback(args.summary, "unknown")
+    metrics_source = fallback(summary.get("metrics_source"), "none")
+    adapter_status = fallback(summary.get("adapter_status"), "skip")
+    adapter_error = summary.get("adapter_error") or ""
+    adapter_warnings = summary.get("adapter_warnings") or []
     return {
         "name": args.name,
         "note": note,
@@ -250,6 +254,10 @@ def load_payload_data(args: argparse.Namespace) -> Dict[str, Any]:
         "log_path": first_present(facts.get("log_path"), metadata.get("log_path")),
         "summary_path": summary_path,
         "metrics": ordered_metrics(metrics),
+        "metrics_source": metrics_source,
+        "adapter_status": adapter_status,
+        "adapter_error": adapter_error,
+        "adapter_warnings": adapter_warnings,
         "analysis": analysis,
         "tail_log": sanitize_tail(log_tail),
     }
@@ -279,7 +287,12 @@ def build_text_message(data: Dict[str, Any], include_tail: bool) -> str:
         for label, value in data["metrics"]:
             lines.append(f"- {label}: {value}")
     else:
-        lines.append("- 未提取到核心指标")
+        lines.append("- 未提取到结构化指标")
+
+    lines.append(f"- Metrics source: {data['metrics_source']}")
+
+    if data["adapter_status"] == "error" and data["adapter_error"]:
+        lines.append(f"- Adapter 状态: error (已回退到默认提取逻辑)")
 
     analysis = data["analysis"]
     lines.extend(
@@ -320,10 +333,19 @@ def build_card(data: Dict[str, Any], include_tail: bool) -> Dict[str, Any]:
     if not metric_fields:
         metric_block = {
             "tag": "div",
-            "text": lark_md(subdued("未提取到核心指标")),
+            "text": lark_md(subdued("未提取到结构化指标")),
         }
     else:
         metric_block = {"tag": "div", "fields": metric_fields}
+
+    metrics_source = data.get("metrics_source", "none")
+    adapter_status = data.get("adapter_status", "skip")
+    adapter_error = data.get("adapter_error", "")
+
+    metrics_extra_lines = [f"\n{subdued('Metrics source: ' + metrics_source)}"]
+    if adapter_status == "error" and adapter_error:
+        metrics_extra_lines.append(f"\n{subdued('project_results_adapter 执行失败，已回退到默认提取逻辑。')}")
+    metrics_extra = "\n".join(metrics_extra_lines)
 
     command = truncate(data["command"], MAX_COMMAND_CHARS)
     log_path = truncate(data["log_path"], MAX_PATH_CHARS)
@@ -356,6 +378,10 @@ def build_card(data: Dict[str, Any], include_tail: bool) -> Dict[str, Any]:
         {"tag": "hr"},
         section_title("核心指标"),
         metric_block,
+        {
+            "tag": "div",
+            "text": lark_md(metrics_extra),
+        },
         {"tag": "hr"},
         section_title("Agent 分析"),
         {

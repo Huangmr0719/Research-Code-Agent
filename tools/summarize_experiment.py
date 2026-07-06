@@ -6,8 +6,32 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+
+def _try_adapter(project_root: str, log_path: Optional[str], output_dir: Optional[str]) -> Dict[str, Any]:
+    """Try to load project_results_adapter.py and call extract_metrics."""
+    script_dir = Path(__file__).parent
+    adapter_path = script_dir / "project_results_adapter.py"
+    if not adapter_path.is_file():
+        return {"metrics": {}, "metrics_source": "none", "adapter_status": "skip", "warnings": []}
+
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("project_results_adapter", adapter_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        result = mod.extract_metrics(project_root, log_path=log_path, output_dir=output_dir)
+        metrics = result.get("metrics", {})
+        source = result.get("metrics_source", "none")
+        warnings = result.get("warnings", [])
+        if metrics:
+            return {"metrics": metrics, "metrics_source": source, "adapter_status": "ok", "adapter_warnings": warnings}
+        return {"metrics": {}, "metrics_source": source, "adapter_status": "empty", "adapter_warnings": warnings}
+    except Exception as exc:
+        return {"metrics": {}, "metrics_source": "none", "adapter_status": "error", "adapter_error": str(exc), "adapter_warnings": []}
 
 
 METRIC_PATTERNS = {
@@ -172,6 +196,7 @@ def main() -> int:
     parser.add_argument("--note", default="")
     parser.add_argument("--log", required=True)
     parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--project-root", default=".")
     parser.add_argument("--metrics-json")
     parser.add_argument("--result-json")
     args = parser.parse_args()
@@ -182,9 +207,26 @@ def main() -> int:
     metadata = load_json(args.result_json)
     metrics_json = load_json(args.metrics_json)
     log_text = read_log(args.log)
-    metrics = extract_metrics_from_json(metrics_json, metadata)
-    if not metrics:
-        metrics = extract_metrics_from_log(log_text)
+
+    adapter_result = _try_adapter(args.project_root, args.log, args.output_dir)
+    adapter_status = adapter_result.get("adapter_status", "skip")
+    adapter_error = adapter_result.get("adapter_error")
+    adapter_warnings = adapter_result.get("adapter_warnings", [])
+    metrics_source = adapter_result.get("metrics_source", "none")
+
+    if adapter_status == "ok" and adapter_result.get("metrics"):
+        metrics = adapter_result["metrics"]
+        metrics_source = adapter_result.get("metrics_source", "adapter")
+    else:
+        metrics = extract_metrics_from_json(metrics_json, metadata)
+        if metrics:
+            metrics_source = "json"
+        else:
+            metrics = extract_metrics_from_log(log_text)
+            if metrics:
+                metrics_source = "log_regex"
+            else:
+                metrics_source = "none"
 
     exit_code = metadata.get("exit_code", "unknown")
     facts = {
@@ -206,6 +248,8 @@ def main() -> int:
         "status": args.status,
         "facts": facts,
         "metrics": metrics,
+        "metrics_source": metrics_source,
+        "adapter_status": adapter_status,
         "log_tail": extract_log_tail(log_text),
         "traceback": extract_traceback(log_text),
         "analysis": {
@@ -216,6 +260,11 @@ def main() -> int:
             "confidence": "unknown",
         },
     }
+
+    if adapter_error:
+        summary["adapter_error"] = adapter_error
+    if adapter_warnings:
+        summary["adapter_warnings"] = adapter_warnings
 
     json_path = output_dir / f"{args.name}.summary.json"
     md_path = output_dir / f"{args.name}.summary.md"

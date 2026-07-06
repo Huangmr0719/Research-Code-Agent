@@ -9,6 +9,19 @@ This repository uses the Research-Code-Agent workflow.
 - Do not redesign the Feishu card. Pass structured data to `feishu_notify.py`; card layout is maintained by Research-Code-Agent.
 - After initializing a new project, run: `./tools/test_feishu_notify.sh`
 
+## Project Results Adapter
+
+- After entering a new baseline project, first check how that project outputs metrics.
+- Adapt `tools/project_results_adapter.py` to the project's actual output format.
+- Priority:
+  1. Reuse the project's existing `metrics.json` / `result.json` / `results.json` / `eval_results.json`
+  2. Reuse CSV / wandb / tensorboard exports
+  3. Extract from a stable log format
+  4. LAST RESORT: minimal change to `train.py` / `eval.py` to write structured output
+- Do NOT force all projects to output a single fixed results schema.
+- Do NOT refactor training code at scale.
+- Do NOT commit experiment outputs to Git.
+
 ## Do Not Commit
 
 - `papers/`
