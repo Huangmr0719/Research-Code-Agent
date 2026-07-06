@@ -21,8 +21,11 @@ Run it as:
 - `logs/` stores complete stdout/stderr logs.
 - `experiments/summaries/` stores `.summary.json` and `.summary.md` files for each experiment name.
 - Feishu receives `success`, `failed`, or `interrupted` notifications.
+- `summary.json` keeps factual fields separate from `analysis`.
 
 The first version does not require modifying `train.py`. If later experiments need more stable metric parsing, make `train.py` write `metrics.json` or `result.json`; the summary script will prefer JSON metrics over regex log extraction.
+
+`summarize_experiment.py` only extracts facts, metrics, traceback snippets, and the last 80 log lines. `analyze_with_agent.py` calls OpenCode with those limited inputs and writes structured Agent Analysis back into `summary.json`.
 
 ## Feishu CLI
 

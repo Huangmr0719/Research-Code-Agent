@@ -183,25 +183,64 @@ def sanitize_tail(tail_log: str) -> str:
     return content or "No log tail captured."
 
 
+def join_tail(value: Any) -> str:
+    if isinstance(value, list):
+        return "\n".join(str(line) for line in value)
+    return str(value or "")
+
+
+def normalize_analysis(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {
+            "concise_summary": "Agent analysis unavailable. See facts and log tail.",
+            "evidence": [],
+            "possible_causes": [],
+            "next_steps": [],
+            "confidence": "low",
+        }
+    return {
+        "concise_summary": fallback(value.get("concise_summary"), "Agent analysis unavailable. See facts and log tail."),
+        "evidence": value.get("evidence") if isinstance(value.get("evidence"), list) else [],
+        "possible_causes": value.get("possible_causes") if isinstance(value.get("possible_causes"), list) else [],
+        "next_steps": value.get("next_steps") if isinstance(value.get("next_steps"), list) else [],
+        "confidence": fallback(value.get("confidence"), "low"),
+    }
+
+
+def bullet_list(items: List[Any], empty: str = "None") -> str:
+    values = [str(item).strip() for item in items if str(item).strip()]
+    if not values:
+        return subdued(empty)
+    return "\n".join(f"- {truncate(value, 220)}" for value in values[:6])
+
+
 def load_payload_data(args: argparse.Namespace) -> Dict[str, Any]:
     metadata = load_json(args.metadata)
     summary = load_json(args.summary)
+    facts = summary.get("facts") if isinstance(summary.get("facts"), dict) else {}
     metrics = flatten_metrics(summary.get("metrics") or metadata.get("metrics"))
+    status = fallback(facts.get("status") or args.status)
+    if status not in STATUS_META:
+        status = args.status
+    analysis = normalize_analysis(summary.get("analysis"))
+    log_tail = join_tail(summary.get("log_tail")) or read_text(args.tail_log)
     return {
         "name": args.name,
-        "status": args.status,
-        "title": f"{STATUS_META[args.status]['title']} | {args.name}",
-        "color": STATUS_META[args.status]["color"],
-        "summary": STATUS_META[args.status]["summary"],
-        "host": fallback(metadata.get("host")),
-        "git_commit": fallback(metadata.get("git_commit")),
-        "command": fallback(metadata.get("command")),
-        "start_time": fallback(metadata.get("start_time")),
-        "end_time": fallback(metadata.get("end_time")),
-        "duration": format_duration(metadata.get("duration_seconds")),
-        "log_path": fallback(metadata.get("log_path")),
+        "status": status,
+        "title": f"{STATUS_META[status]['title']} | {args.name}",
+        "color": STATUS_META[status]["color"],
+        "host": fallback(facts.get("host") or metadata.get("host")),
+        "git_commit": fallback(facts.get("git_commit") or metadata.get("git_commit")),
+        "command": fallback(facts.get("command") or metadata.get("command")),
+        "start_time": fallback(facts.get("start_time") or metadata.get("start_time")),
+        "end_time": fallback(facts.get("end_time") or metadata.get("end_time")),
+        "duration": fallback(facts.get("duration") or format_duration(metadata.get("duration_seconds"))),
+        "exit_code": fallback(facts.get("exit_code") or metadata.get("exit_code")),
+        "signal": fallback(facts.get("signal") or metadata.get("signal")),
+        "log_path": fallback(facts.get("log_path") or metadata.get("log_path")),
         "metrics": ordered_metrics(metrics),
-        "tail_log": sanitize_tail(read_text(args.tail_log)),
+        "analysis": analysis,
+        "tail_log": sanitize_tail(log_tail),
     }
 
 
@@ -214,9 +253,10 @@ def build_text_message(data: Dict[str, Any], include_tail: bool) -> str:
         f"Host: {data['host']}",
         "",
         "Overview:",
-        f"- Summary: {data['summary']}",
+        f"- Exit code: {data['exit_code']}",
+        f"- Signal: {data['signal']}",
         "",
-        "Meta:",
+        "Run Facts:",
         f"- Git Commit: {data['git_commit']}",
         f"- Start Time: {data['start_time']}",
         f"- End Time: {data['end_time']}",
@@ -230,6 +270,25 @@ def build_text_message(data: Dict[str, Any], include_tail: bool) -> str:
             lines.append(f"- {label}: {value}")
     else:
         lines.append("- No metrics found")
+
+    analysis = data["analysis"]
+    lines.extend(
+        [
+            "",
+            "Agent Analysis:",
+            f"- Summary: {analysis['concise_summary']}",
+            f"- Confidence: {analysis['confidence']}",
+        ]
+    )
+    if analysis["evidence"]:
+        lines.append("- Evidence:")
+        lines.extend(f"  - {item}" for item in analysis["evidence"])
+    if analysis["possible_causes"]:
+        lines.append("- Possible causes:")
+        lines.extend(f"  - {item}" for item in analysis["possible_causes"])
+    if analysis["next_steps"]:
+        lines.append("- Next steps:")
+        lines.extend(f"  - {item}" for item in analysis["next_steps"])
 
     if include_tail:
         lines.extend(["", "Log Tail (last 80 lines):", data["tail_log"]])
@@ -250,13 +309,9 @@ def build_card(data: Dict[str, Any], include_tail: bool) -> Dict[str, Any]:
 
     command = truncate(data["command"], MAX_COMMAND_CHARS)
     log_path = truncate(data["log_path"], MAX_PATH_CHARS)
+    analysis = data["analysis"]
     elements: List[Dict[str, Any]] = [
-        {
-            "tag": "div",
-            "text": lark_md(data["summary"]),
-        },
-        {"tag": "hr"},
-        section_title("Run Overview"),
+        section_title("Run Facts"),
         {
             "tag": "div",
             "fields": fields(
@@ -264,6 +319,9 @@ def build_card(data: Dict[str, Any], include_tail: bool) -> Dict[str, Any]:
                     ("Status", data["status"]),
                     ("Duration", data["duration"]),
                     ("Host", data["host"]),
+                    ("Exit Code", data["exit_code"]),
+                    ("Signal", data["signal"]),
+                    ("Git Commit", data["git_commit"]),
                 ]
             ),
         },
@@ -273,7 +331,6 @@ def build_card(data: Dict[str, Any], include_tail: bool) -> Dict[str, Any]:
             "tag": "div",
             "fields": fields(
                 [
-                    ("Git Commit", data["git_commit"]),
                     ("Start Time", data["start_time"]),
                     ("End Time", data["end_time"]),
                     ("Log Path", log_path),
@@ -281,8 +338,20 @@ def build_card(data: Dict[str, Any], include_tail: bool) -> Dict[str, Any]:
             ),
         },
         {"tag": "hr"},
-        section_title("Core Metrics"),
+        section_title("Metrics"),
         metric_block,
+        {"tag": "hr"},
+        section_title("Agent Analysis"),
+        {
+            "tag": "div",
+            "text": lark_md(
+                f"**Summary**\n{analysis['concise_summary']}\n\n"
+                f"**Evidence**\n{bullet_list(analysis['evidence'])}\n\n"
+                f"**Possible Causes**\n{bullet_list(analysis['possible_causes'], 'Not applicable')}\n\n"
+                f"**Next Steps**\n{bullet_list(analysis['next_steps'])}\n\n"
+                f"{subdued('Confidence: ' + analysis['confidence'])}"
+            ),
+        },
     ]
 
     if include_tail:
@@ -503,7 +572,7 @@ def main() -> int:
     parser.add_argument("--tail-log")
     args = parser.parse_args()
 
-    include_tail = args.status in {"failed", "interrupted"}
+    include_tail = True
     data = load_payload_data(args)
     text_message = build_text_message(data, include_tail=include_tail)
 

@@ -42,6 +42,7 @@ tools/
   run_with_feishu_notify.sh
   feishu_notify.py
   summarize_experiment.py
+  analyze_with_agent.py
 logs/
 outputs/
 experiments/
@@ -70,7 +71,7 @@ Use:
 ./tools/run_with_feishu_notify.sh --name baseline_default -- python train.py --config configs/default.yaml
 ```
 
-The wrapper records start time, end time, duration, host, git commit, stdout/stderr log path, exit code, metrics, and a summary.
+The wrapper records start time, end time, duration, host, git commit, stdout/stderr log path, exit code, signal, metrics, log tail, and Agent Analysis.
 
 ## Toy Tests
 
@@ -150,6 +151,13 @@ experiments/summaries/<experiment_name>.summary.json
 experiments/summaries/<experiment_name>.summary.md
 ```
 
+`summarize_experiment.py` is fact-only. It extracts:
+
+- `facts`: status, exit code, signal, command, host, git commit, start/end time, duration, log path
+- `metrics`
+- `log_tail`: last 80 log lines
+- `traceback`: short traceback/error snippet if available
+
 If `metrics.json` or `result.json` exists, JSON metrics are preferred. Otherwise the script extracts common metrics from logs:
 
 - `accuracy`
@@ -160,6 +168,36 @@ If `metrics.json` or `result.json` exists, JSON metrics are preferred. Otherwise
 - `loss`
 - `val_loss`
 - `best_epoch`
+
+## Agent Analysis
+
+`tools/analyze_with_agent.py` reads the summary JSON and calls OpenCode:
+
+```bash
+opencode run "<prompt>"
+```
+
+Only facts, metrics, traceback snippets, and the last 80 log lines are sent to the agent. The analysis is written to `summary.json` under the `analysis` field and never overwrites `facts`.
+
+The analysis schema is:
+
+```json
+{
+  "concise_summary": "...",
+  "evidence": [],
+  "possible_causes": [],
+  "next_steps": [],
+  "confidence": "low|medium|high"
+}
+```
+
+If OpenCode is unavailable or fails, notifications still send. The analysis summary becomes:
+
+```text
+Agent analysis unavailable. See facts and log tail.
+```
+
+Feishu cards show `Run Facts`, `Metrics`, `Agent Analysis`, `Log Tail`, and `Command`.
 
 ## Agent Rule
 

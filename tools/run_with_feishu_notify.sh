@@ -70,11 +70,13 @@ write_status_json() {
   local exit_code="$2"
   local end_epoch="$3"
   local end_time="$4"
+  local signal="${5:-unknown}"
   local duration_seconds="$((end_epoch - START_EPOCH))"
 
   EXPERIMENT_NAME_JSON="$EXPERIMENT_NAME" \
   STATUS_JSON="$status" \
   EXIT_CODE_JSON="$exit_code" \
+  SIGNAL_JSON="$signal" \
   HOST_NAME_JSON="$HOST_NAME" \
   GIT_COMMIT_JSON="$GIT_COMMIT" \
   COMMAND_DISPLAY_JSON="$COMMAND_DISPLAY" \
@@ -92,6 +94,7 @@ data = {
     "experiment_name": os.environ["EXPERIMENT_NAME_JSON"],
     "status": os.environ["STATUS_JSON"],
     "exit_code": int(os.environ["EXIT_CODE_JSON"]),
+    "signal": os.environ["SIGNAL_JSON"],
     "host": os.environ["HOST_NAME_JSON"],
     "git_commit": os.environ["GIT_COMMIT_JSON"],
     "command": os.environ["COMMAND_DISPLAY_JSON"].strip(),
@@ -131,6 +134,13 @@ summarize() {
   python3 "${args[@]}" || true
 }
 
+analyze() {
+  local summary_json="$SUMMARY_DIR/${EXPERIMENT_NAME}.summary.json"
+  if [[ -f "$summary_json" ]]; then
+    python3 "$SCRIPT_DIR/analyze_with_agent.py" --summary "$summary_json" || true
+  fi
+}
+
 notify() {
   local status="$1"
   local summary_json="$SUMMARY_DIR/${EXPERIMENT_NAME}.summary.json"
@@ -155,13 +165,15 @@ notify() {
 finish() {
   local status="$1"
   local exit_code="$2"
+  local signal="${3:-unknown}"
   local end_epoch
   local end_time
   end_epoch="$(date +%s)"
   end_time="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
-  write_status_json "$status" "$exit_code" "$end_epoch" "$end_time"
+  write_status_json "$status" "$exit_code" "$end_epoch" "$end_time" "$signal"
   summarize "$status"
+  analyze
   notify "$status"
 }
 
@@ -169,7 +181,7 @@ interrupted() {
   local signal="$1"
   trap - INT TERM
   printf '\nInterrupted by %s\n' "$signal" >> "$LOG_PATH" 2>/dev/null || true
-  finish "interrupted" 130
+  finish "interrupted" 130 "$signal"
   exit 130
 }
 

@@ -47,6 +47,7 @@ main() {
   require_file "$SCRIPT_DIR/tools/run_with_feishu_notify.sh"
   require_file "$SCRIPT_DIR/tools/feishu_notify.py"
   require_file "$SCRIPT_DIR/tools/summarize_experiment.py"
+  require_file "$SCRIPT_DIR/tools/analyze_with_agent.py"
   require_file "$SCRIPT_DIR/templates/AGENTS.md"
   require_file "$SCRIPT_DIR/templates/README_AGENT_WORKFLOW.md"
   require_file "$SCRIPT_DIR/examples/toy_success.sh"
@@ -66,6 +67,7 @@ main() {
   copy_file "$SCRIPT_DIR/tools/run_with_feishu_notify.sh" "$TARGET_DIR/tools/run_with_feishu_notify.sh"
   copy_file "$SCRIPT_DIR/tools/feishu_notify.py" "$TARGET_DIR/tools/feishu_notify.py"
   copy_file "$SCRIPT_DIR/tools/summarize_experiment.py" "$TARGET_DIR/tools/summarize_experiment.py"
+  copy_file "$SCRIPT_DIR/tools/analyze_with_agent.py" "$TARGET_DIR/tools/analyze_with_agent.py"
   copy_file "$SCRIPT_DIR/templates/AGENTS.md" "$TARGET_DIR/AGENTS.md"
   copy_file "$SCRIPT_DIR/templates/README_AGENT_WORKFLOW.md" "$TARGET_DIR/README_AGENT_WORKFLOW.md"
   copy_file "$SCRIPT_DIR/examples/toy_success.sh" "$TARGET_DIR/examples/toy_success.sh"
@@ -74,6 +76,7 @@ main() {
   chmod +x "$TARGET_DIR/tools/run_with_feishu_notify.sh"
   chmod +x "$TARGET_DIR/tools/feishu_notify.py"
   chmod +x "$TARGET_DIR/tools/summarize_experiment.py"
+  chmod +x "$TARGET_DIR/tools/analyze_with_agent.py"
   chmod +x "$TARGET_DIR/examples/toy_success.sh"
   chmod +x "$TARGET_DIR/examples/toy_failed.sh"
 

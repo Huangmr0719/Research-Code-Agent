@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a simple experiment summary from logs and optional JSON results."""
+"""Extract factual experiment summary data from logs and optional JSON results."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import argparse
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 
 METRIC_PATTERNS = {
@@ -21,6 +21,9 @@ METRIC_PATTERNS = {
     "best_epoch": re.compile(r"(?i)\bbest_epoch\b\s*[:=]\s*(-?\d+(?:\.\d+)?)"),
 }
 
+MAX_LOG_TAIL_LINES = 80
+MAX_LOG_TAIL_LINE_CHARS = 300
+
 
 def load_json(path: Optional[str]) -> Dict[str, Any]:
     if not path:
@@ -29,9 +32,7 @@ def load_json(path: Optional[str]) -> Dict[str, Any]:
         with open(path, "r", encoding="utf-8") as f:
             value = json.load(f)
         return value if isinstance(value, dict) else {}
-    except FileNotFoundError:
-        return {}
-    except json.JSONDecodeError:
+    except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
 
@@ -44,14 +45,15 @@ def read_log(path: str) -> str:
 
 def extract_metrics_from_json(*objects: Dict[str, Any]) -> Dict[str, Any]:
     metrics = {}  # type: Dict[str, Any]
-    keys = set(METRIC_PATTERNS)
+    canonical = {key.lower(): key for key in METRIC_PATTERNS}
     for obj in objects:
         if not obj:
             continue
         source = obj.get("metrics") if isinstance(obj.get("metrics"), dict) else obj
         for key, value in source.items():
-            if key in keys or key.lower() in {k.lower() for k in keys}:
-                metrics[key] = value
+            canonical_key = canonical.get(str(key).lower())
+            if canonical_key:
+                metrics[canonical_key] = value
     return metrics
 
 
@@ -65,15 +67,27 @@ def extract_metrics_from_log(log_text: str) -> Dict[str, Any]:
     return metrics
 
 
-def find_failure_summary(log_text: str, status: str) -> str:
-    if status == "success":
-        return ""
-    lines = [line.strip() for line in log_text.splitlines() if line.strip()]
-    keywords = ("error", "exception", "failed", "traceback", "cuda out of memory", "out of memory", "interrupted")
-    selected = [line for line in lines if any(keyword in line.lower() for keyword in keywords)]
-    if selected:
-        return "\n".join(selected[-12:])
-    return "\n".join(lines[-12:])
+def truncate_line(line: str) -> str:
+    if len(line) <= MAX_LOG_TAIL_LINE_CHARS:
+        return line
+    return line[: MAX_LOG_TAIL_LINE_CHARS - 18].rstrip() + " ... [truncated]"
+
+
+def extract_log_tail(log_text: str) -> List[str]:
+    lines = log_text.splitlines()[-MAX_LOG_TAIL_LINES:]
+    return [truncate_line(line) for line in lines]
+
+
+def extract_traceback(log_text: str) -> List[str]:
+    lines = log_text.splitlines()
+    lower_lines = [line.lower() for line in lines]
+    markers = ("traceback", "exception", "error", "cuda out of memory", "out of memory")
+    indices = [idx for idx, line in enumerate(lower_lines) if any(marker in line for marker in markers)]
+    if not indices:
+        return []
+    start = max(0, indices[-1] - 20)
+    end = min(len(lines), indices[-1] + 40)
+    return [truncate_line(line) for line in lines[start:end]][-80:]
 
 
 def format_duration(seconds: Any) -> str:
@@ -90,36 +104,58 @@ def format_duration(seconds: Any) -> str:
     return f"{secs}s"
 
 
+def default_signal(status: str, exit_code: Any, metadata: Dict[str, Any]) -> str:
+    signal = metadata.get("signal")
+    if signal:
+        return str(signal)
+    try:
+        code = int(exit_code)
+    except (TypeError, ValueError):
+        code = -1
+    if status == "interrupted":
+        if code == 130:
+            return "SIGINT"
+        if code == 143:
+            return "SIGTERM"
+    return "unknown"
+
+
 def write_markdown(path: Path, summary: Dict[str, Any]) -> None:
+    facts = summary["facts"]
     metrics = summary.get("metrics") or {}
-    failure_summary = summary.get("failure_summary") or ""
-    metric_lines = "\n".join(f"- {key}: {value}" for key, value in sorted(metrics.items())) or "- none"
+    analysis = summary.get("analysis") or {}
+    metric_lines = "\n".join(f"- {key}: {value}" for key, value in sorted(metrics.items())) or "- No metrics found"
+    tail_lines = "\n".join(summary.get("log_tail") or [])
+    analysis_summary = analysis.get("concise_summary", "Agent analysis pending.")
 
     content = f"""# Experiment Summary: {summary['experiment_name']}
 
-## Run
+## Facts
 
-- Experiment: {summary['experiment_name']}
-- Status: {summary['status']}
-- Command: `{summary.get('command', 'unknown')}`
-- Host: {summary.get('host', 'unknown')}
-- Git commit: {summary.get('git_commit', 'unknown')}
-- Start time: {summary.get('start_time', 'unknown')}
-- End time: {summary.get('end_time', 'unknown')}
-- Duration: {format_duration(summary.get('duration_seconds'))}
-- Log path: {summary.get('log_path', 'unknown')}
+- Status: {facts.get('status', 'unknown')}
+- Exit code: {facts.get('exit_code', 'unknown')}
+- Signal: {facts.get('signal', 'unknown')}
+- Command: `{facts.get('command', 'unknown')}`
+- Host: {facts.get('host', 'unknown')}
+- Git commit: {facts.get('git_commit', 'unknown')}
+- Start time: {facts.get('start_time', 'unknown')}
+- End time: {facts.get('end_time', 'unknown')}
+- Duration: {facts.get('duration', 'unknown')}
+- Log path: {facts.get('log_path', 'unknown')}
 
-## Core Metrics
+## Metrics
 
 {metric_lines}
 
-## Failure Summary
+## Agent Analysis
 
-{failure_summary or 'none'}
+{analysis_summary}
 
-## Next Steps
+## Log Tail
 
-- TODO: Record the next action after reviewing this run.
+```text
+{tail_lines}
+```
 """
     path.write_text(content, encoding="utf-8")
 
@@ -144,18 +180,34 @@ def main() -> int:
     if not metrics:
         metrics = extract_metrics_from_log(log_text)
 
-    summary = {
-        "experiment_name": args.name,
+    exit_code = metadata.get("exit_code", "unknown")
+    facts = {
         "status": args.status,
+        "exit_code": exit_code,
+        "signal": default_signal(args.status, exit_code, metadata),
         "command": metadata.get("command", "unknown"),
         "host": metadata.get("host", "unknown"),
         "git_commit": metadata.get("git_commit", "unknown"),
         "start_time": metadata.get("start_time", "unknown"),
         "end_time": metadata.get("end_time", "unknown"),
         "duration_seconds": metadata.get("duration_seconds"),
+        "duration": format_duration(metadata.get("duration_seconds")),
         "log_path": metadata.get("log_path", args.log),
+    }
+
+    summary = {
+        "experiment_name": args.name,
+        "facts": facts,
         "metrics": metrics,
-        "failure_summary": find_failure_summary(log_text, args.status),
+        "log_tail": extract_log_tail(log_text),
+        "traceback": extract_traceback(log_text),
+        "analysis": {
+            "concise_summary": "Agent analysis pending.",
+            "evidence": [],
+            "possible_causes": [],
+            "next_steps": [],
+            "confidence": "unknown",
+        },
     }
 
     json_path = output_dir / f"{args.name}.summary.json"
