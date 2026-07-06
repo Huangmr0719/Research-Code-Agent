@@ -1,24 +1,51 @@
 # Agent Instructions
 
-This repository uses the research agent workflow initialized by `research-agent-template`.
+This repository uses the Research-Code-Agent workflow.
 
 ## Experiment Execution
 
-- All long-running experiments in this project must be executed through `tools/run_with_feishu_notify.sh`.
-- Do not directly run long tasks such as `python train.py`, `bash train.sh`, or equivalent training/evaluation commands.
+- All long-running experiments must go through: `tools/run_with_feishu_notify.sh`
 - Do not bypass Feishu notification.
-- The Agent does not need to monitor training continuously. The wrapper decides `success`, `failed`, or `interrupted` from the command exit code.
+- Do not redesign the Feishu card. Pass structured data to `feishu_notify.py`; card layout is maintained by Research-Code-Agent.
+- After initializing a new project, run: `./tools/test_feishu_notify.sh`
 
-## Safety Rules
+## Do Not Commit
 
-- Do not write Feishu credentials into code, scripts, logs, or documentation.
-- Do not introduce MCP, Hermes, or botmux into this project.
-- Do not automatically modify the main repository's core training logic unless the user explicitly asks for that change.
+- `papers/`
+- `PAPER_CONTEXT.md`
+- `logs/`
+- `outputs/`
+- `experiments/`
+- `checkpoints/`
+- `datasets/`
+- `weights/`
+- `models/`
+- `wandb/`
+- `tensorboard/`
+- `secrets/`, `token/`, `credentials/`, `.env`
+
+## Do Not Write Secrets
+
+- Do not write Feishu credentials, webhooks, or tokens into code or commit them to Git.
+
+## Do Not Introduce
+
+- gateway
+- MCP
+- Hermes
+- botmux
+- Feishu bidirectional control
+- Auto `/next` / `/fix` / `/run` control systems
+
+## Keep
+
+- `analyze_with_agent.py` on-demand OpenCode analysis is allowed.
+- Do not add a persistent OpenCode daemon or command listener.
 
 ## Escalation
 
-- If the same bug fails to be fixed after 2-3 consecutive attempts, suggest escalating to CodeX or a stronger review workflow.
-- If the task touches core method implementation, deadline-critical experiments, or rebuttal experiments, suggest escalating to CodeX or a stronger review workflow before making risky changes.
+- If the same bug fails after 2-3 attempts, suggest escalating to CodeX or a stronger review workflow.
+- If the task touches core method implementation, deadline-critical experiments, or rebuttal experiments, suggest escalating before making risky changes.
 
 ## Standard Command Pattern
 

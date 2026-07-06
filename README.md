@@ -1,30 +1,36 @@
-# research-agent-template
+# Research-Code-Agent
 
-A small reusable template for initializing research projects with:
+面向科研代码项目的轻量级 Agent 辅助实验工具。
 
-- a single experiment wrapper
-- Feishu notification hooks
+当前能力：
+
+- experiment wrapper（带状态捕获）
+- Feishu notification（卡片/文本）
 - log capture
-- simple experiment summaries
-- Agent workflow constraints
+- summary.json / summary.md
+- on-demand OpenCode analysis
+- toy success / failed / interrupted tests
+- Feishu smoke test
 
-This first version is intentionally plain bash plus Python standard library. It does not store Feishu credentials.
+技术栈：bash + Python 标准库，无外部依赖。不存储 Feishu 凭证。
+
+当前不做：gateway、MCP、Hermes、botmux、飞书双向控制。
 
 ## Install Once
 
 Keep this repository somewhere stable, for example:
 
 ```bash
-~/research-agent-template
+~/Research-Code-Agent
 ```
 
 Make scripts executable:
 
 ```bash
-chmod +x ~/research-agent-template/init_research_project.sh
-chmod +x ~/research-agent-template/tools/*.sh
-chmod +x ~/research-agent-template/tools/*.py
-chmod +x ~/research-agent-template/examples/*.sh
+chmod +x ~/Research-Code-Agent/init_research_project.sh
+chmod +x ~/Research-Code-Agent/tools/*.sh
+chmod +x ~/Research-Code-Agent/tools/*.py
+chmod +x ~/Research-Code-Agent/examples/*.sh
 ```
 
 ## Initialize A Research Project
@@ -32,7 +38,7 @@ chmod +x ~/research-agent-template/examples/*.sh
 From any research project root:
 
 ```bash
-~/research-agent-template/init_research_project.sh
+~/Research-Code-Agent/init_research_project.sh
 ```
 
 The init script creates:
@@ -43,6 +49,7 @@ tools/
   feishu_notify.py
   summarize_experiment.py
   analyze_with_agent.py
+  test_feishu_notify.sh
 logs/
 outputs/
 experiments/
@@ -56,6 +63,20 @@ README_AGENT_WORKFLOW.md
 ```
 
 If `tools/`, `AGENTS.md`, `README_AGENT_WORKFLOW.md`, or the toy example files already exist, existing paths are moved to `.bak.<timestamp>` before new files are copied.
+
+## Recommended Order After Init
+
+```bash
+# 1. Initialize
+bash init_research_project.sh
+
+# 2. Verify Feishu notification
+./tools/test_feishu_notify.sh
+
+# 3. Run toy tests
+./tools/run_with_feishu_notify.sh --name toy_success --note "toy success notification check" -- bash examples/toy_success.sh
+./tools/run_with_feishu_notify.sh --name toy_failed -- bash examples/toy_failed.sh
+```
 
 ## Run An Experiment
 
@@ -82,25 +103,15 @@ You can add an experiment note:
 
 The wrapper records the note, start time, end time, duration, host, git commit, stdout/stderr log path, exit code, signal, metrics, log tail, and Agent Analysis.
 
-## Toy Tests
+## Feishu Smoke Test
 
-After initializing a project that has the `examples/` directory, run:
-
-```bash
-./tools/run_with_feishu_notify.sh --name toy_success --note "toy success notification check" -- bash examples/toy_success.sh
-```
+After initializing a project, verify Feishu notification:
 
 ```bash
-./tools/run_with_feishu_notify.sh --name toy_failed -- bash examples/toy_failed.sh
+./tools/test_feishu_notify.sh
 ```
 
-Interrupt test:
-
-```bash
-./tools/run_with_feishu_notify.sh --name toy_interrupt -- bash -c "sleep 60"
-```
-
-Then press `Ctrl+C`. You should receive an `interrupted` notification if Feishu CLI is configured.
+If you receive the test card/message, the notification pipeline is working.
 
 ## Feishu Configuration
 

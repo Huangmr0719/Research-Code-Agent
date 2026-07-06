@@ -1,6 +1,6 @@
-# Research Agent Workflow
+# Research-Code-Agent Workflow
 
-This project uses a simple wrapper for long-running experiments. The wrapper records logs, creates a summary, and sends a Feishu notification when the command exits.
+This project uses Research-Code-Agent for long-running experiments. The wrapper records logs, creates a summary, and sends a Feishu notification when the command exits.
 
 ## Run Experiments
 
@@ -23,6 +23,14 @@ Add a short experiment note when the run has a specific intent:
   --name exp_042 \
   --note "去除 region mask 模块，验证该模块对 UF1/UAR 的贡献" \
   -- python train.py --config configs/exp_042.yaml
+```
+
+## Feishu Smoke Test
+
+After initializing the project, verify Feishu notification:
+
+```bash
+./tools/test_feishu_notify.sh
 ```
 
 ## Outputs

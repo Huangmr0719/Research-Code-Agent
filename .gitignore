@@ -1,6 +1,77 @@
+# Git only tracks files useful for running, developing, or maintaining the project after cloning.
+# Local papers, runtime logs, experiment outputs, checkpoints, datasets, model weights, and secrets are ignored.
+
+# Papers and paper context
+papers/
+PAPER_CONTEXT.md
+
+# Runtime logs and outputs
 logs/
 outputs/
-experiments/runs/
-*.bak.*
-__pycache__/
+
+# Experiment data
+experiments/
+# experiments/runs/
+# experiments/summaries/
+# experiments/results/
+
+# Checkpoints and model weights
+checkpoints/
+ckpts/
+weights/
+models/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.bin
+
+# Datasets
+data/
+dataset/
+datasets/
+
+# Experiment tracking
+wandb/
+tb_logs/
+tensorboard/
+events.out.tfevents.*
+
+# Secrets and credentials
 .env
+.env.*
+secrets.json
+credentials.json
+token.json
+feishu_config.json
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+conda-meta/
+
+# Temp and cache
+tmp/
+temp/
+.cache/
+*.bak
+*.bak.*
+*.backup
+*.orig
+
+# OS and editor files
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo

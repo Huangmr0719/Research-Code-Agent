@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_DIR="$(pwd)"
 TIMESTAMP="$(date +"%Y%m%d_%H%M%S")"
 
+TEST_FEISHU=0
+
 log() {
   printf '[research-init] %s\n' "$*"
 }
@@ -41,13 +43,41 @@ require_file() {
   fi
 }
 
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --test-feishu)
+        TEST_FEISHU=1
+        shift
+        ;;
+      -h|--help)
+        cat <<'EOF'
+Usage:
+  bash init_research_project.sh [--test-feishu]
+
+Options:
+  --test-feishu   Run Feishu smoke test after initialization
+EOF
+        exit 0
+        ;;
+      *)
+        printf 'Unknown argument: %s\n' "$1" >&2
+        exit 1
+        ;;
+    esac
+  done
+}
+
 main() {
-  log "Initializing research agent workflow in $TARGET_DIR"
+  parse_args "$@"
+
+  log "Initializing Research-Code-Agent workflow in $TARGET_DIR"
 
   require_file "$SCRIPT_DIR/tools/run_with_feishu_notify.sh"
   require_file "$SCRIPT_DIR/tools/feishu_notify.py"
   require_file "$SCRIPT_DIR/tools/summarize_experiment.py"
   require_file "$SCRIPT_DIR/tools/analyze_with_agent.py"
+  require_file "$SCRIPT_DIR/tools/test_feishu_notify.sh"
   require_file "$SCRIPT_DIR/templates/AGENTS.md"
   require_file "$SCRIPT_DIR/templates/README_AGENT_WORKFLOW.md"
   require_file "$SCRIPT_DIR/examples/toy_success.sh"
@@ -68,6 +98,7 @@ main() {
   copy_file "$SCRIPT_DIR/tools/feishu_notify.py" "$TARGET_DIR/tools/feishu_notify.py"
   copy_file "$SCRIPT_DIR/tools/summarize_experiment.py" "$TARGET_DIR/tools/summarize_experiment.py"
   copy_file "$SCRIPT_DIR/tools/analyze_with_agent.py" "$TARGET_DIR/tools/analyze_with_agent.py"
+  copy_file "$SCRIPT_DIR/tools/test_feishu_notify.sh" "$TARGET_DIR/tools/test_feishu_notify.sh"
   copy_file "$SCRIPT_DIR/templates/AGENTS.md" "$TARGET_DIR/AGENTS.md"
   copy_file "$SCRIPT_DIR/templates/README_AGENT_WORKFLOW.md" "$TARGET_DIR/README_AGENT_WORKFLOW.md"
   copy_file "$SCRIPT_DIR/examples/toy_success.sh" "$TARGET_DIR/examples/toy_success.sh"
@@ -77,11 +108,19 @@ main() {
   chmod +x "$TARGET_DIR/tools/feishu_notify.py"
   chmod +x "$TARGET_DIR/tools/summarize_experiment.py"
   chmod +x "$TARGET_DIR/tools/analyze_with_agent.py"
+  chmod +x "$TARGET_DIR/tools/test_feishu_notify.sh"
   chmod +x "$TARGET_DIR/examples/toy_success.sh"
   chmod +x "$TARGET_DIR/examples/toy_failed.sh"
 
   log "Done."
-  cat <<'EOF'
+
+  if [[ "$TEST_FEISHU" -eq 1 ]]; then
+    log "Running Feishu smoke test..."
+    "$TARGET_DIR/tools/test_feishu_notify.sh" || true
+  else
+    cat <<'EOF'
+
+Next step: run ./tools/test_feishu_notify.sh to verify Feishu notification.
 
 Toy test commands:
   ./tools/run_with_feishu_notify.sh --name toy_success --note "toy success notification check" -- bash examples/toy_success.sh
@@ -90,6 +129,7 @@ Toy test commands:
 
 For Feishu delivery, configure an installed Feishu CLI or set FEISHU_CLI_SEND_COMMAND.
 EOF
+  fi
 }
 
 main "$@"
