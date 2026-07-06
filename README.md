@@ -16,9 +16,9 @@
 - toy success / failed / interrupted tests
 - Feishu smoke test
 
-技术栈：bash + Python 标准库。核心实验工具无外部依赖；可选 Feishu-OpenCode Bridge 需要 Feishu 官方 `lark-oapi` SDK。不存储 Feishu 凭证。
+技术栈：bash + Python 标准库。核心实验工具无外部依赖；可选 Feishu-OpenCode Bridge 需要 Feishu Channel SDK Python（`lark-channel-sdk`）。不存储 Feishu 凭证。
 
-当前不做：gateway、MCP、Hermes、botmux、webhook、内网穿透、飞书审批控制。
+当前 Bridge 不做：gateway、MCP、Hermes、botmux、Vercel Chat SDK、飞书 CLI、webhook、内网穿透、飞书审批控制、多平台抽象。
 
 ## Install Once
 
@@ -323,7 +323,7 @@ Feishu cards show `实验备注`, `运行概览`, `核心指标`, `Agent 分析`
 v0.5.0 adds an optional thin bridge for remote OpenCode access from Feishu:
 
 ```text
-Feishu long connection
+Feishu Channel SDK Python
   -> open_id whitelist
   -> sqlite message_id dedupe
   -> per-chat lock
@@ -332,7 +332,7 @@ Feishu long connection
   -> chunked Feishu text replies
 ```
 
-The bridge does not implement `/status`, `/summary`, `/run`, or any Python command router. It does not use webhook, public ports, tunneling, streaming progress, approval cards, MCP, Hermes, or botmux. OpenCode is responsible for understanding and executing the user request.
+The bridge does not implement `/status`, `/summary`, `/run`, or any Python command router. It does not use Vercel Chat SDK, `@larksuite/vercel-chat-adapter`, Feishu CLI, DingTalk MCP, webhook, public ports, tunneling, streaming progress, approval cards, MCP, Hermes, botmux, or multi-platform routing. Feishu is the only remote entrypoint. OpenCode is responsible for understanding and executing the user request.
 
 Long-running experiments must still be launched through:
 
@@ -342,7 +342,7 @@ Long-running experiments must still be launched through:
 
 ### Feishu App Setup
 
-Create a Feishu self-built app and enable long connection event delivery. Subscribe to the message receive event for bot chats, then install the app into the target chat. Record:
+Create a Feishu self-built app and enable WebSocket event subscription for local/server development. Subscribe to the message receive event for bot chats, grant bot message send/receive scopes, then reinstall the app into the tenant and target chat. Record:
 
 - app id
 - app secret
@@ -385,23 +385,24 @@ sudo $EDITOR /etc/research-code-agent/feishu-bridge.env
 Required values:
 
 ```bash
-FEISHU_APP_ID=cli_xxx
-FEISHU_APP_SECRET=xxx
-FEISHU_ALLOWED_OPEN_IDS=ou_xxx,ou_yyy
-# RCA_FEISHU_ALLOWED_OPEN_IDS is also accepted
+LARK_APP_ID=cli_xxx
+LARK_APP_SECRET=xxx
+RCA_FEISHU_ALLOWED_OPEN_IDS=ou_xxx,ou_yyy
 OPENCODE_BASE_URL=http://127.0.0.1:4096
 OPENCODE_SERVER_USERNAME=opencode
 OPENCODE_SERVER_PASSWORD=change-this-long-random-password
 RCA_PROJECT_DIR=/path/to/baseline-project
-RCA_BRIDGE_DB=/path/to/baseline-project/logs/feishu_opencode_bridge.sqlite3
+BRIDGE_DB_PATH=/path/to/baseline-project/logs/feishu_opencode_bridge.sqlite3
+BRIDGE_LOG_PATH=/path/to/baseline-project/logs/feishu_opencode_bridge.jsonl
+BRIDGE_TIMEOUT_SECONDS=600
 ```
 
 The copied env file is private configuration and must not be committed.
 
-Install the Feishu Python SDK in the runtime environment used by systemd:
+Install Feishu Channel SDK Python in the runtime environment used by systemd:
 
 ```bash
-python3 -m pip install --user lark-oapi
+python3 -m pip install --user lark-channel-sdk
 ```
 
 ### Permission Boundary

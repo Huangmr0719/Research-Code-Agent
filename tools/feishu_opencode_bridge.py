@@ -10,6 +10,7 @@ Feishu in text chunks.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import base64
 import json
 import os
@@ -23,7 +24,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 
 DEFAULT_OPENCODE_URL = "http://127.0.0.1:4096"
@@ -48,6 +49,7 @@ class BridgeConfig:
     opencode_password: str
     project_dir: str
     db_path: str
+    log_path: str
     timeout_seconds: int
     chunk_chars: int
     ack_text: str
@@ -104,22 +106,23 @@ def env_int(name: str, default: int) -> int:
 
 
 def load_config() -> BridgeConfig:
-    allowed_env = os.environ.get("FEISHU_ALLOWED_OPEN_IDS") or os.environ.get("RCA_FEISHU_ALLOWED_OPEN_IDS", "")
+    allowed_env = os.environ.get("RCA_FEISHU_ALLOWED_OPEN_IDS") or os.environ.get("FEISHU_ALLOWED_OPEN_IDS", "")
     allowed = {
         item.strip()
         for item in allowed_env.split(",")
         if item.strip()
     }
     config = BridgeConfig(
-        app_id=os.environ.get("FEISHU_APP_ID", ""),
-        app_secret=os.environ.get("FEISHU_APP_SECRET", ""),
+        app_id=os.environ.get("LARK_APP_ID") or os.environ.get("FEISHU_APP_ID", ""),
+        app_secret=os.environ.get("LARK_APP_SECRET") or os.environ.get("FEISHU_APP_SECRET", ""),
         allowed_open_ids=allowed,
         opencode_base_url=os.environ.get("OPENCODE_BASE_URL", DEFAULT_OPENCODE_URL).rstrip("/"),
         opencode_username=os.environ.get("OPENCODE_SERVER_USERNAME", "opencode"),
         opencode_password=os.environ.get("OPENCODE_SERVER_PASSWORD", ""),
         project_dir=os.environ.get("RCA_PROJECT_DIR", os.getcwd()),
-        db_path=os.environ.get("RCA_BRIDGE_DB", "logs/feishu_opencode_bridge.sqlite3"),
-        timeout_seconds=env_int("RCA_BRIDGE_TIMEOUT_SECONDS", 600),
+        db_path=os.environ.get("BRIDGE_DB_PATH") or os.environ.get("RCA_BRIDGE_DB", "logs/feishu_opencode_bridge.sqlite3"),
+        log_path=os.environ.get("BRIDGE_LOG_PATH", "logs/feishu_opencode_bridge.jsonl"),
+        timeout_seconds=env_int("BRIDGE_TIMEOUT_SECONDS", env_int("RCA_BRIDGE_TIMEOUT_SECONDS", 600)),
         chunk_chars=env_int("RCA_BRIDGE_CHUNK_CHARS", 2500),
         ack_text=os.environ.get("RCA_BRIDGE_ACK_TEXT", DEFAULT_ACK),
         busy_text=os.environ.get("RCA_BRIDGE_BUSY_TEXT", DEFAULT_BUSY),
@@ -132,11 +135,11 @@ def load_config() -> BridgeConfig:
     )
     missing = []
     if not config.app_id:
-        missing.append("FEISHU_APP_ID")
+        missing.append("LARK_APP_ID")
     if not config.app_secret:
-        missing.append("FEISHU_APP_SECRET")
+        missing.append("LARK_APP_SECRET")
     if not config.allowed_open_ids:
-        missing.append("FEISHU_ALLOWED_OPEN_IDS")
+        missing.append("RCA_FEISHU_ALLOWED_OPEN_IDS")
     if not config.opencode_base_url.startswith("http://127.0.0.1:"):
         missing.append("OPENCODE_BASE_URL must use http://127.0.0.1:<port>")
     if missing:
@@ -444,59 +447,70 @@ def chunk_text(text: str, chunk_chars: int) -> list[str]:
     return chunks or ["(empty)"]
 
 
-def parse_feishu_text(content: str) -> str:
-    try:
-        parsed = json.loads(content)
-    except json.JSONDecodeError:
-        return content.strip()
-    if isinstance(parsed, dict):
-        return str(parsed.get("text", "")).strip()
-    return str(parsed).strip()
-
-
 class BridgeApp:
-    def __init__(self, config: BridgeConfig, sender: Callable[[str, str], None]):
+    def __init__(self, config: BridgeConfig, channel: Any):
         self.config = config
-        self.sender = sender
+        self.channel = channel
         self.store = MessageStore(config.db_path)
         self.chat_locks = ChatLockRegistry()
         self.opencode = OpenCodeClient(config)
 
-    def handle_message(self, event: Any) -> None:
-        message = event.event.message
-        sender_id = event.event.sender.sender_id
-        open_id = getattr(sender_id, "open_id", "") or ""
-        chat_id = message.chat_id
-        message_id = message.message_id
-
+    async def handle_message(self, msg: Any) -> None:
+        open_id = getattr(msg, "sender_id", "") or getattr(getattr(msg, "sender", None), "open_id", "") or ""
+        chat_id = getattr(msg, "chat_id", "")
+        message_id = getattr(msg, "message_id", "") or getattr(msg, "id", "")
+        text = getattr(msg, "content_text", "") or ""
         if open_id not in self.config.allowed_open_ids:
-            print(f"ignored message from non-whitelisted open_id={open_id}", file=sys.stderr)
-            return
-        if message.message_type != "text":
-            self._safe_send(message_id, "当前原型只支持文本消息。")
+            self._audit("reject_non_whitelist", message_id, chat_id, open_id)
             return
         if not self.store.claim_message(message_id, chat_id, open_id):
-            print(f"deduplicated message_id={message_id}", file=sys.stderr)
+            self._audit("deduplicated", message_id, chat_id, open_id)
             return
 
         lock = self.chat_locks.acquire(chat_id)
         if lock is None:
-            self._safe_send(message_id, self.config.busy_text)
+            await self._safe_send(chat_id, message_id, self.config.busy_text)
             return
 
-        if not self._safe_send(message_id, self.config.ack_text):
+        if not await self._safe_send(chat_id, message_id, self.config.ack_text):
             lock.release()
             return
-        thread = threading.Thread(
-            target=self._process_message,
-            args=(lock, message_id, chat_id, open_id, parse_feishu_text(message.content)),
-            daemon=True,
-        )
-        thread.start()
 
-    def _safe_send(self, message_id: str, text: str) -> bool:
         try:
-            self.sender(message_id, text)
+            result = await asyncio.to_thread(self._process_message, message_id, chat_id, open_id, text)
+            for index, chunk in enumerate(chunk_text(result, self.config.chunk_chars), start=1):
+                prefix = f"[{index}] " if index > 1 else ""
+                await self._safe_send(chat_id, message_id, prefix + chunk)
+            self.store.update_message_status(message_id, "success")
+            self._audit("success", message_id, chat_id, open_id)
+        except OpenCodeTimeoutError as exc:
+            print("bridge processing timed out:", exc, file=sys.stderr)
+            self.store.update_message_status(message_id, "timeout", str(exc))
+            self._audit("timeout", message_id, chat_id, open_id, str(exc))
+            await self._safe_send(chat_id, message_id, self.config.timeout_text)
+        except OpenCodeUnavailableError as exc:
+            print("OpenCode unavailable:", exc, file=sys.stderr)
+            self.store.update_message_status(message_id, "opencode_unavailable", str(exc))
+            self._audit("opencode_unavailable", message_id, chat_id, open_id, str(exc))
+            await self._safe_send(chat_id, message_id, "OpenCode 服务不可用，请检查 opencode serve。")
+        except Exception as exc:  # noqa: BLE001 - bridge must report failures to Feishu.
+            print("bridge processing failed:", exc, file=sys.stderr)
+            traceback.print_exc()
+            self.store.update_message_status(message_id, "failed", str(exc))
+            self._audit("failed", message_id, chat_id, open_id, str(exc))
+            await self._safe_send(chat_id, message_id, self.config.unavailable_text)
+        finally:
+            lock.release()
+
+    async def _safe_send(self, chat_id: str, message_id: str, text: str) -> bool:
+        try:
+            result = await self.channel.send(
+                chat_id,
+                {"markdown": text},
+                {"reply_to": message_id},
+            )
+            if hasattr(result, "success") and result.success is False:
+                raise BridgeError(f"Feishu send failed: {getattr(result, 'error', '')}")
             return True
         except Exception as exc:  # noqa: BLE001 - Feishu delivery failure should not crash callbacks.
             print(f"Feishu reply failed for message_id={message_id}: {exc}", file=sys.stderr)
@@ -504,89 +518,49 @@ class BridgeApp:
 
     def _process_message(
         self,
-        lock: threading.Lock,
         message_id: str,
         chat_id: str,
         open_id: str,
         text: str,
-    ) -> None:
-        try:
-            self.store.update_message_status(message_id, "processing")
-            session_id = self.store.get_chat_session(chat_id)
-            if not session_id:
-                session_id = self.opencode.create_session(title=f"feishu:{chat_id}")
-                self.store.save_chat_session(chat_id, session_id)
-            context = {"message_id": message_id, "chat_id": chat_id, "open_id": open_id}
-            result = self.opencode.send_message(
-                session_id,
-                text,
-                context,
-                timeout=self.config.timeout_seconds,
-            )
-            for index, chunk in enumerate(chunk_text(result, self.config.chunk_chars), start=1):
-                prefix = f"[{index}] " if index > 1 else ""
-                self._safe_send(message_id, prefix + chunk)
-            self.store.update_message_status(message_id, "success")
-        except OpenCodeTimeoutError as exc:
-            print("bridge processing timed out:", exc, file=sys.stderr)
-            self.store.update_message_status(message_id, "timeout", str(exc))
-            self._safe_send(message_id, self.config.timeout_text)
-        except OpenCodeUnavailableError as exc:
-            print("OpenCode unavailable:", exc, file=sys.stderr)
-            self.store.update_message_status(message_id, "opencode_unavailable", str(exc))
-            self._safe_send(message_id, "OpenCode 服务不可用，请检查 opencode serve。")
-        except Exception as exc:  # noqa: BLE001 - bridge must report failures to Feishu.
-            print("bridge processing failed:", exc, file=sys.stderr)
-            traceback.print_exc()
-            self.store.update_message_status(message_id, "failed", str(exc))
-            self._safe_send(message_id, self.config.unavailable_text)
-        finally:
-            lock.release()
+    ) -> str:
+        self.store.update_message_status(message_id, "processing")
+        session_id = self.store.get_chat_session(chat_id)
+        if not session_id:
+            session_id = self.opencode.create_session(title=f"feishu:{chat_id}")
+            self.store.save_chat_session(chat_id, session_id)
+        context = {"message_id": message_id, "chat_id": chat_id, "open_id": open_id}
+        return self.opencode.send_message(
+            session_id,
+            text,
+            context,
+            timeout=self.config.timeout_seconds,
+        )
 
-
-def make_feishu_sender(client: Any) -> Callable[[str, str], None]:
-    from lark_oapi.api.im.v1 import ReplyMessageRequest, ReplyMessageRequestBody
-
-    def send(message_id: str, text: str) -> None:
-        body = ReplyMessageRequestBody.builder().msg_type("text").content(
-            json.dumps({"text": text}, ensure_ascii=False)
-        ).build()
-        request = ReplyMessageRequest.builder().message_id(message_id).request_body(body).build()
-        response = client.im.v1.message.reply(request)
-        if not response.success():
-            raise BridgeError(f"Feishu reply failed: {response.code} {response.msg}")
-
-    return send
+    def _audit(self, status: str, message_id: str, chat_id: str, open_id: str, error: str = "") -> None:
+        Path(self.config.log_path).parent.mkdir(parents=True, exist_ok=True)
+        row = {
+            "time": int(time.time()),
+            "status": status,
+            "message_id": message_id,
+            "chat_id": chat_id,
+            "open_id": open_id,
+            "error": error,
+        }
+        with open(self.config.log_path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
 def start_feishu_bridge(config: BridgeConfig) -> None:
     try:
-        import lark_oapi as lark
-        from lark_oapi.api.im.v1 import P2ImMessageReceiveV1
+        from lark_channel import FeishuChannel
     except ImportError as exc:
-        raise BridgeError("missing dependency: install lark-oapi for Feishu long connection") from exc
+        raise BridgeError("missing dependency: install lark-channel-sdk for Feishu Channel SDK") from exc
 
-    client = lark.Client.builder().app_id(config.app_id).app_secret(config.app_secret).build()
-    app = BridgeApp(config, make_feishu_sender(client))
+    channel = FeishuChannel(app_id=config.app_id, app_secret=config.app_secret)
+    app = BridgeApp(config, channel)
     app.opencode.validate_doc()
-
-    def on_message(data: Any) -> None:
-        app.handle_message(data)
-
-    builder = lark.EventDispatcherHandler.builder("", "")
-    register = builder.register_p2_im_message_receive_v1
-    try:
-        builder = register(on_message)
-    except TypeError:
-        builder = register(P2ImMessageReceiveV1, on_message)
-    event_handler = builder.build()
-    ws_client = lark.ws.Client(
-        config.app_id,
-        config.app_secret,
-        event_handler=event_handler,
-        log_level=lark.LogLevel.INFO,
-    )
-    ws_client.start()
+    channel.on("message", app.handle_message)
+    asyncio.run(channel.connect())
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
