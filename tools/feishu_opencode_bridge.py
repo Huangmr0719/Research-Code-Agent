@@ -13,6 +13,7 @@ import argparse
 import base64
 import json
 import os
+import socket
 import sqlite3
 import sys
 import threading
@@ -29,6 +30,7 @@ DEFAULT_OPENCODE_URL = "http://127.0.0.1:4096"
 DEFAULT_ACK = "收到，处理中。"
 DEFAULT_BUSY = "当前会话已有任务处理中，请稍后再试。"
 DEFAULT_UNAVAILABLE = "OpenCode 调用失败，请查看 bridge 日志。"
+DEFAULT_TIMEOUT = "处理超时，已尝试中止当前 OpenCode 会话任务，请到服务器检查日志。"
 DEFAULT_SYSTEM_PROMPT = (
     "你是 Research-Code-Agent 远程助手。你运行在用户的科研代码服务器上。"
     "你只根据当前项目文件和用户消息工作；不要编造执行结果。"
@@ -42,6 +44,7 @@ class BridgeConfig:
     app_secret: str
     allowed_open_ids: set[str]
     opencode_base_url: str
+    opencode_username: str
     opencode_password: str
     project_dir: str
     db_path: str
@@ -50,6 +53,7 @@ class BridgeConfig:
     ack_text: str
     busy_text: str
     unavailable_text: str
+    timeout_text: str
     system_prompt: str
     opencode_agent: str
     opencode_model_provider: str
@@ -65,6 +69,14 @@ class OpenCodeHttpError(BridgeError):
         super().__init__(f"OpenCode HTTP {status_code}: {details}")
         self.status_code = status_code
         self.details = details
+
+
+class OpenCodeTimeoutError(BridgeError):
+    pass
+
+
+class OpenCodeUnavailableError(BridgeError):
+    pass
 
 
 def load_env_file(path: str) -> None:
@@ -103,6 +115,7 @@ def load_config() -> BridgeConfig:
         app_secret=os.environ.get("FEISHU_APP_SECRET", ""),
         allowed_open_ids=allowed,
         opencode_base_url=os.environ.get("OPENCODE_BASE_URL", DEFAULT_OPENCODE_URL).rstrip("/"),
+        opencode_username=os.environ.get("OPENCODE_SERVER_USERNAME", "opencode"),
         opencode_password=os.environ.get("OPENCODE_SERVER_PASSWORD", ""),
         project_dir=os.environ.get("RCA_PROJECT_DIR", os.getcwd()),
         db_path=os.environ.get("RCA_BRIDGE_DB", "logs/feishu_opencode_bridge.sqlite3"),
@@ -111,6 +124,7 @@ def load_config() -> BridgeConfig:
         ack_text=os.environ.get("RCA_BRIDGE_ACK_TEXT", DEFAULT_ACK),
         busy_text=os.environ.get("RCA_BRIDGE_BUSY_TEXT", DEFAULT_BUSY),
         unavailable_text=os.environ.get("RCA_BRIDGE_UNAVAILABLE_TEXT", DEFAULT_UNAVAILABLE),
+        timeout_text=os.environ.get("RCA_BRIDGE_TIMEOUT_TEXT", DEFAULT_TIMEOUT),
         system_prompt=os.environ.get("RCA_BRIDGE_SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT),
         opencode_agent=os.environ.get("OPENCODE_AGENT", ""),
         opencode_model_provider=os.environ.get("OPENCODE_MODEL_PROVIDER", ""),
@@ -150,24 +164,72 @@ class MessageStore:
                     message_id TEXT PRIMARY KEY,
                     chat_id TEXT NOT NULL,
                     open_id TEXT NOT NULL,
-                    created_at INTEGER NOT NULL
+                    created_at INTEGER NOT NULL,
+                    status TEXT,
+                    error TEXT
                 )
                 """
             )
+            self._ensure_column(conn, "processed_messages", "status", "TEXT")
+            self._ensure_column(conn, "processed_messages", "error", "TEXT")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chat_sessions (
+                    chat_id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                )
+                """
+            )
+
+    def _ensure_column(self, conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
+        columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in columns:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
 
     def claim_message(self, message_id: str, chat_id: str, open_id: str) -> bool:
         with self._lock, self._connect() as conn:
             try:
                 conn.execute(
                     """
-                    INSERT INTO processed_messages(message_id, chat_id, open_id, created_at)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO processed_messages(message_id, chat_id, open_id, created_at, status, error)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    (message_id, chat_id, open_id, int(time.time())),
+                    (message_id, chat_id, open_id, int(time.time()), "received", None),
                 )
                 return True
             except sqlite3.IntegrityError:
                 return False
+
+    def update_message_status(self, message_id: str, status: str, error: str = "") -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                "UPDATE processed_messages SET status = ?, error = ? WHERE message_id = ?",
+                (status, error or None, message_id),
+            )
+
+    def get_chat_session(self, chat_id: str) -> Optional[str]:
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT session_id FROM chat_sessions WHERE chat_id = ?",
+                (chat_id,),
+            ).fetchone()
+        return row[0] if row else None
+
+    def save_chat_session(self, chat_id: str, session_id: str) -> None:
+        now = int(time.time())
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO chat_sessions(chat_id, session_id, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(chat_id) DO UPDATE SET
+                    session_id = excluded.session_id,
+                    updated_at = excluded.updated_at
+                """,
+                (chat_id, session_id, now, now),
+            )
 
 
 class OpenCodeClient:
@@ -177,11 +239,19 @@ class OpenCodeClient:
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
         if self.config.opencode_password:
-            token = base64.b64encode(f"opencode:{self.config.opencode_password}".encode("utf-8"))
+            token = base64.b64encode(
+                f"{self.config.opencode_username}:{self.config.opencode_password}".encode("utf-8")
+            )
             headers["Authorization"] = "Basic " + token.decode("ascii")
         return headers
 
-    def _request(self, method: str, path: str, payload: Optional[dict[str, Any]] = None) -> Any:
+    def _request(
+        self,
+        method: str,
+        path: str,
+        payload: Optional[dict[str, Any]] = None,
+        timeout: Optional[int] = None,
+    ) -> Any:
         url = self.config.opencode_base_url + path
         data = None
         headers = self._headers()
@@ -189,7 +259,7 @@ class OpenCodeClient:
             data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(req, timeout=self.config.timeout_seconds) as resp:
+            with urllib.request.urlopen(req, timeout=timeout or self.config.timeout_seconds) as resp:
                 body = resp.read()
                 if not body:
                     return None
@@ -197,115 +267,146 @@ class OpenCodeClient:
         except urllib.error.HTTPError as exc:
             details = exc.read().decode("utf-8", "replace")
             raise OpenCodeHttpError(exc.code, details) from exc
-        except (urllib.error.URLError, TimeoutError) as exc:
-            raise BridgeError(f"OpenCode request failed: {exc}") from exc
+        except (socket.timeout, TimeoutError) as exc:
+            raise OpenCodeTimeoutError(f"OpenCode request timed out after {timeout or self.config.timeout_seconds}s") from exc
+        except urllib.error.URLError as exc:
+            if isinstance(exc.reason, socket.timeout):
+                raise OpenCodeTimeoutError(
+                    f"OpenCode request timed out after {timeout or self.config.timeout_seconds}s"
+                ) from exc
+            raise OpenCodeUnavailableError(f"OpenCode request failed: {exc}") from exc
+
+    def health(self) -> dict[str, Any]:
+        data = self._request("GET", "/global/health")
+        if not isinstance(data, dict) or data.get("healthy") is not True:
+            raise BridgeError(f"OpenCode health check failed: {data!r}")
+        return data
 
     def validate_doc(self) -> None:
+        self.health()
         doc = self._request("GET", "/doc")
         paths = doc.get("paths", {}) if isinstance(doc, dict) else {}
         required = [
-            "/api/session",
-            "/api/session/{sessionID}/prompt",
-            "/api/session/{sessionID}/wait",
-            "/api/session/{sessionID}/message",
+            "/session",
+            "/session/{sessionID}/message",
+            "/session/{sessionID}/abort",
         ]
         missing = [path for path in required if path not in paths]
         if missing:
             raise BridgeError("OpenCode /doc missing required paths: " + ", ".join(missing))
 
-    def run(self, user_text: str, feishu_context: dict[str, str]) -> str:
-        session = self._create_session(feishu_context)
-        session_id = session["id"]
-        prompt = self._build_prompt(user_text, feishu_context)
-        self._send_prompt(session_id, prompt)
-        self._wait(session_id)
-        return self._collect_output(session_id)
-
-    def _create_session(self, feishu_context: dict[str, str]) -> dict[str, Any]:
-        payload: dict[str, Any] = {
-            "location": {"directory": self.config.project_dir},
-            "agent": self.config.opencode_agent or None,
-            "model": (
-                {
-                    "providerID": self.config.opencode_model_provider,
-                    "id": self.config.opencode_model_id,
-                }
-                if self.config.opencode_model_provider and self.config.opencode_model_id
-                else None
-            ),
-        }
-        payload = {key: value for key, value in payload.items() if value is not None}
-        data = self._request("POST", "/api/session", payload)
+    def create_session(self, title: Optional[str] = None) -> str:
+        payload: dict[str, Any] = {}
+        if title:
+            payload["title"] = title
+        data = self._request("POST", "/session", payload)
+        session = self._unwrap_data(data)
         try:
-            return data["data"]
+            return session["id"]
         except (TypeError, KeyError) as exc:
             raise BridgeError(f"unexpected OpenCode session response: {data!r}") from exc
 
-    def _build_prompt(self, user_text: str, feishu_context: dict[str, str]) -> str:
-        context = "\n".join(
+    def send_message(
+        self,
+        session_id: str,
+        user_text: str,
+        feishu_context: dict[str, str],
+        timeout: int,
+    ) -> str:
+        prompt = self._build_prompt(user_text, feishu_context)
+        payload: dict[str, Any] = {"parts": [{"type": "text", "text": prompt}]}
+        try:
+            data = self._request("POST", f"/session/{session_id}/message", payload, timeout=timeout)
+        except OpenCodeTimeoutError:
+            self.abort_session(session_id)
+            raise
+        text = self.extract_text_from_response(data)
+        if text:
+            return text
+        return self.extract_text_from_messages(self.list_messages(session_id, limit=5)) or "OpenCode 已完成，但未返回文本输出。"
+
+    def abort_session(self, session_id: str) -> bool:
+        try:
+            data = self._request("POST", f"/session/{session_id}/abort")
+            return bool(data) if data is not None else True
+        except BridgeError as exc:
+            print(f"failed to abort OpenCode session {session_id}: {exc}", file=sys.stderr)
+            return False
+
+    def list_messages(self, session_id: str, limit: int = 5) -> list[dict[str, Any]]:
+        data = self._request("GET", f"/session/{session_id}/message?limit={limit}")
+        unwrapped = self._unwrap_data(data)
+        if isinstance(unwrapped, list):
+            return [item for item in unwrapped if isinstance(item, dict)]
+        return []
+
+    def _build_prompt(self, user_text: str, feishu_context: Optional[dict[str, str]] = None) -> str:
+        feishu_context = feishu_context or {}
+        return "\n".join(
             [
-                "Feishu remote request:",
+                self.config.system_prompt,
+                "",
+                "用户通过飞书发来请求：",
+                "",
+                user_text,
+                "",
+                "请在当前项目中处理。遵守 AGENTS.md。优先使用 Research-Code-Agent 现有 tools。长实验必须使用 tools/run_with_feishu_notify.sh。",
+                "",
+                "Feishu context:",
                 f"- open_id: {feishu_context.get('open_id', 'unknown')}",
                 f"- chat_id: {feishu_context.get('chat_id', 'unknown')}",
                 f"- message_id: {feishu_context.get('message_id', 'unknown')}",
-                "",
-                "User message:",
-                user_text,
             ]
-        )
-        return context
+        ).strip()
 
-    def _send_prompt(self, session_id: str, prompt: str) -> None:
-        payload: dict[str, Any] = {
-            "prompt": {"text": prompt},
-            "delivery": "queue",
-            "resume": True,
-        }
-        if self.config.system_prompt:
-            # The v2 prompt API does not expose a system field; prepend a clear
-            # behavior note. Security must still come from opencode.json and OS permissions.
-            payload["prompt"]["text"] = self.config.system_prompt + "\n\n" + prompt
-        self._request("POST", f"/api/session/{session_id}/prompt", payload)
+    def extract_text_from_response(self, data: Any) -> str:
+        item = self._unwrap_data(data)
+        if isinstance(item, dict):
+            if item.get("info", {}).get("error"):
+                raise BridgeError("OpenCode assistant error: " + json.dumps(item["info"]["error"], ensure_ascii=False))
+            return self.extract_text_from_parts(item.get("parts", []))
+        return ""
 
-    def _wait(self, session_id: str) -> None:
-        try:
-            self._request("POST", f"/api/session/{session_id}/wait")
-            return
-        except OpenCodeHttpError as exc:
-            if exc.status_code != 503 or "Session wait is not available yet" not in exc.details:
-                raise
-        self._poll_until_assistant_text(session_id)
-
-    def _poll_until_assistant_text(self, session_id: str) -> None:
-        deadline = time.time() + self.config.timeout_seconds
-        while time.time() < deadline:
-            if self._assistant_texts(session_id, completed_only=True):
-                return
-            time.sleep(2)
-        raise BridgeError(f"OpenCode session timed out after {self.config.timeout_seconds}s")
-
-    def _collect_output(self, session_id: str) -> str:
-        texts = self._assistant_texts(session_id, completed_only=False)
-        output = "\n\n".join(texts).strip()
-        return output or "OpenCode 已完成，但未返回文本输出。"
-
-    def _assistant_texts(self, session_id: str, completed_only: bool) -> list[str]:
-        data = self._request("GET", f"/api/session/{session_id}/message?order=asc&limit=50")
-        messages = data.get("data", []) if isinstance(data, dict) else []
+    def extract_text_from_messages(self, messages: list[dict[str, Any]]) -> str:
         texts: list[str] = []
         for item in messages:
-            message = item.get("info", item) if isinstance(item, dict) else {}
-            parts = item.get("parts", []) if isinstance(item, dict) else []
-            if message.get("role") != "assistant":
+            if item.get("info", {}).get("error"):
+                raise BridgeError("OpenCode assistant error: " + json.dumps(item["info"]["error"], ensure_ascii=False))
+            text = self.extract_text_from_parts(item.get("parts", []))
+            if text:
+                texts.append(text)
+        output = "\n\n".join(texts).strip()
+        return output
+
+    def extract_text_from_parts(self, parts: Any) -> str:
+        if not isinstance(parts, list):
+            return ""
+        texts: list[str] = []
+        for part in parts:
+            if not isinstance(part, dict):
                 continue
-            if message.get("error"):
-                raise BridgeError("OpenCode assistant error: " + json.dumps(message["error"], ensure_ascii=False))
-            if completed_only and not message.get("time", {}).get("completed"):
+            if part.get("error"):
+                texts.append("Error: " + json.dumps(part["error"], ensure_ascii=False))
                 continue
-            for part in parts:
-                if isinstance(part, dict) and part.get("type") == "text" and part.get("text"):
-                    texts.append(part["text"])
-        return texts
+            for key in ("text", "content", "message", "result"):
+                value = part.get(key)
+                if isinstance(value, str) and value.strip():
+                    texts.append(value.strip())
+                    break
+            else:
+                state = part.get("state")
+                if isinstance(state, dict):
+                    for key in ("output", "text", "content", "error"):
+                        value = state.get(key)
+                        if isinstance(value, str) and value.strip():
+                            texts.append(value.strip())
+                            break
+        return "\n".join(texts).strip()
+
+    def _unwrap_data(self, data: Any) -> Any:
+        if isinstance(data, dict) and "data" in data:
+            return data["data"]
+        return data
 
 
 class ChatLockRegistry:
@@ -410,16 +511,34 @@ class BridgeApp:
         text: str,
     ) -> None:
         try:
-            result = self.opencode.run(
+            self.store.update_message_status(message_id, "processing")
+            session_id = self.store.get_chat_session(chat_id)
+            if not session_id:
+                session_id = self.opencode.create_session(title=f"feishu:{chat_id}")
+                self.store.save_chat_session(chat_id, session_id)
+            context = {"message_id": message_id, "chat_id": chat_id, "open_id": open_id}
+            result = self.opencode.send_message(
+                session_id,
                 text,
-                {"message_id": message_id, "chat_id": chat_id, "open_id": open_id},
+                context,
+                timeout=self.config.timeout_seconds,
             )
             for index, chunk in enumerate(chunk_text(result, self.config.chunk_chars), start=1):
                 prefix = f"[{index}] " if index > 1 else ""
                 self._safe_send(message_id, prefix + chunk)
+            self.store.update_message_status(message_id, "success")
+        except OpenCodeTimeoutError as exc:
+            print("bridge processing timed out:", exc, file=sys.stderr)
+            self.store.update_message_status(message_id, "timeout", str(exc))
+            self._safe_send(message_id, self.config.timeout_text)
+        except OpenCodeUnavailableError as exc:
+            print("OpenCode unavailable:", exc, file=sys.stderr)
+            self.store.update_message_status(message_id, "opencode_unavailable", str(exc))
+            self._safe_send(message_id, "OpenCode 服务不可用，请检查 opencode serve。")
         except Exception as exc:  # noqa: BLE001 - bridge must report failures to Feishu.
             print("bridge processing failed:", exc, file=sys.stderr)
             traceback.print_exc()
+            self.store.update_message_status(message_id, "failed", str(exc))
             self._safe_send(message_id, self.config.unavailable_text)
         finally:
             lock.release()

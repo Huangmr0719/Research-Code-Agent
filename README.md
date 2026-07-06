@@ -359,14 +359,17 @@ export OPENCODE_SERVER_PASSWORD="<long-random-password>"
 opencode serve --hostname 127.0.0.1 --port 4096
 ```
 
-Before the bridge starts, it checks `http://127.0.0.1:4096/doc` and requires these OpenCode v2 API paths:
+Before the bridge starts, it checks OpenCode health and `http://127.0.0.1:4096/doc`. The bridge uses the standard OpenCode server API:
 
-- `POST /api/session`
-- `POST /api/session/{sessionID}/prompt`
-- `POST /api/session/{sessionID}/wait`
-- `GET /api/session/{sessionID}/message`
+- `GET /global/health`
+- `POST /session`
+- `POST /session/{sessionID}/message`
+- `GET /session/{sessionID}/message`
+- `POST /session/{sessionID}/abort`
 
-When `OPENCODE_SERVER_PASSWORD` is set, OpenCode 1.17.13 protects the HTTP API with Basic Auth using username `opencode` and that password. The bridge reads `OPENCODE_SERVER_PASSWORD` and sends the matching Authorization header.
+When `OPENCODE_SERVER_PASSWORD` is set, OpenCode protects the HTTP API with Basic Auth. The default username is `opencode`; set `OPENCODE_SERVER_USERNAME` if your server overrides it. The bridge reads both values and sends the matching Authorization header.
+
+The bridge stores `chat_id -> session_id` in sqlite, so a Feishu chat can continue using the same OpenCode session after the bridge restarts. If a request times out, the bridge calls `POST /session/{sessionID}/abort` and replies with a timeout notice.
 
 ### Bridge Configuration
 
@@ -387,6 +390,7 @@ FEISHU_APP_SECRET=xxx
 FEISHU_ALLOWED_OPEN_IDS=ou_xxx,ou_yyy
 # RCA_FEISHU_ALLOWED_OPEN_IDS is also accepted
 OPENCODE_BASE_URL=http://127.0.0.1:4096
+OPENCODE_SERVER_USERNAME=opencode
 OPENCODE_SERVER_PASSWORD=change-this-long-random-password
 RCA_PROJECT_DIR=/path/to/baseline-project
 RCA_BRIDGE_DB=/path/to/baseline-project/logs/feishu_opencode_bridge.sqlite3
