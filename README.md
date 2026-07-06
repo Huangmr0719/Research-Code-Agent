@@ -94,15 +94,50 @@ Then press `Ctrl+C`. You should receive an `interrupted` notification if Feishu 
 
 ## Feishu Configuration
 
-`tools/feishu_notify.py` first tries to detect installed `feishu` or `lark` CLI binaries with common send commands.
+`tools/feishu_notify.py` defaults to Feishu card mode. It first tries to detect installed `feishu` or `lark` CLI binaries with common card/text send commands.
+
+If you use `lark-cli`, set one target:
+
+```bash
+export FEISHU_CHAT_ID="oc_xxx"
+# or
+export FEISHU_USER_ID="ou_xxx"
+```
+
+`LARK_CHAT_ID` and `LARK_USER_ID` are also accepted. If needed, set `FEISHU_CLI_AS=bot` or `FEISHU_CLI_AS=user`.
 
 If your CLI uses a different command format, set:
 
 ```bash
-export FEISHU_CLI_SEND_COMMAND="feishu send --text"
+export FEISHU_CLI_CARD_COMMAND="feishu send --card"
+export FEISHU_CLI_TEXT_COMMAND="feishu send --text"
 ```
 
-The configured command should accept the notification text as its final argument. No Feishu credential should be written into this repository.
+The configured command should accept the notification payload as its final argument. If your CLI needs the payload in the middle of the command, use `{payload}`:
+
+```bash
+export FEISHU_CLI_CARD_COMMAND='feishu send --card-json {payload}'
+```
+
+If your CLI needs a payload file, use `{payload_file}`:
+
+```bash
+export FEISHU_CLI_CARD_COMMAND='feishu send --card-file {payload_file}'
+```
+
+For `lark-cli im +messages-send --msg-type interactive --content`, use `{card}` to pass only the card content object:
+
+```bash
+export FEISHU_CLI_CARD_COMMAND='lark-cli im +messages-send --chat-id oc_xxx --msg-type interactive --content {card}'
+```
+
+For compatibility with older setup, `FEISHU_CLI_SEND_COMMAND` is also supported. To force plain text notifications:
+
+```bash
+export FEISHU_NOTIFY_MODE=text
+```
+
+No Feishu credential should be written into this repository.
 
 If Feishu sending fails, the script prints the notification content to stdout and exits non-zero. The experiment wrapper does not fail the experiment just because notification delivery failed.
 

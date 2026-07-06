@@ -29,7 +29,8 @@ The first version does not require modifying `train.py`. If later experiments ne
 No Feishu credential is stored in this repository. Configure your existing Feishu CLI, or set:
 
 ```bash
-export FEISHU_CLI_SEND_COMMAND="feishu send --text"
+export FEISHU_CLI_CARD_COMMAND="feishu send --card"
+export FEISHU_CLI_TEXT_COMMAND="feishu send --text"
 ```
 
-The command prefix should accept the message body as its final argument.
+The command prefix should accept the message body as its final argument. For `lark-cli`, set `FEISHU_CHAT_ID` or `FEISHU_USER_ID`; `lark-cli` will be auto-detected when available.
