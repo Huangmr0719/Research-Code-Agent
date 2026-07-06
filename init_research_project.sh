@@ -77,6 +77,7 @@ main() {
   require_file "$SCRIPT_DIR/tools/feishu_notify.py"
   require_file "$SCRIPT_DIR/tools/summarize_experiment.py"
   require_file "$SCRIPT_DIR/tools/analyze_with_agent.py"
+  require_file "$SCRIPT_DIR/tools/compare_experiments.py"
   require_file "$SCRIPT_DIR/tools/project_results_adapter.py"
   require_file "$SCRIPT_DIR/tools/test_feishu_notify.sh"
   require_file "$SCRIPT_DIR/templates/AGENTS.md"
@@ -99,6 +100,7 @@ main() {
   copy_file "$SCRIPT_DIR/tools/feishu_notify.py" "$TARGET_DIR/tools/feishu_notify.py"
   copy_file "$SCRIPT_DIR/tools/summarize_experiment.py" "$TARGET_DIR/tools/summarize_experiment.py"
   copy_file "$SCRIPT_DIR/tools/analyze_with_agent.py" "$TARGET_DIR/tools/analyze_with_agent.py"
+  copy_file "$SCRIPT_DIR/tools/compare_experiments.py" "$TARGET_DIR/tools/compare_experiments.py"
   if [[ -f "$TARGET_DIR/tools/project_results_adapter.py" ]]; then
     log "Skipped tools/project_results_adapter.py (already exists, not overwriting project-specific adapter)"
   else
@@ -114,6 +116,7 @@ main() {
   chmod +x "$TARGET_DIR/tools/feishu_notify.py"
   chmod +x "$TARGET_DIR/tools/summarize_experiment.py"
   chmod +x "$TARGET_DIR/tools/analyze_with_agent.py"
+  chmod +x "$TARGET_DIR/tools/compare_experiments.py"
   chmod +x "$TARGET_DIR/tools/project_results_adapter.py"
   chmod +x "$TARGET_DIR/tools/test_feishu_notify.sh"
   chmod +x "$TARGET_DIR/examples/toy_success.sh"

@@ -8,6 +8,7 @@
 - Feishu notification（卡片/文本）
 - log capture
 - summary.json / summary.md
+- summary-based experiment comparison
 - on-demand OpenCode analysis
 - project_results_adapter（项目级 metrics 适配）
 - toy success / failed / interrupted tests
@@ -50,6 +51,7 @@ tools/
   feishu_notify.py
   summarize_experiment.py
   analyze_with_agent.py
+  compare_experiments.py
   project_results_adapter.py
   test_feishu_notify.sh
 logs/
@@ -216,6 +218,21 @@ After running the wrapper, `summary.json` and the Feishu card will show these me
 If the adapter fails or finds no structured file, `summarize_experiment.py` falls back to `metrics.json` / `result.json` / log regex.  Adapter failure never blocks summary generation, OpenCode analysis, or Feishu notification.
 
 Adapt `project_results_adapter.py` to each baseline project's output format.  Do NOT commit project-specific logic back into the mother template repository.
+
+## Experiment Comparison
+
+Compare experiments from generated summary files:
+
+```bash
+python tools/compare_experiments.py \
+  --summaries experiments/summaries \
+  --baseline baseline_default \
+  --output experiments/comparisons/compare.md
+```
+
+`compare_experiments.py` only reads `*.summary.json` files under the summaries directory. It does not read full logs.
+
+Comparison output is a local experiment artifact. `experiments/` is ignored by default and should not be committed unless you explicitly decide to preserve a cleaned result elsewhere.
 
 ## Agent Analysis
 

@@ -22,6 +22,14 @@ This repository uses the Research-Code-Agent workflow.
 - Do NOT refactor training code at scale.
 - Do NOT commit experiment outputs to Git.
 
+## Experiment Comparison
+
+- When comparing experiments, prefer `tools/compare_experiments.py`.
+- Base comparisons on structured metrics in `experiments/summaries/*.summary.json`.
+- Do not read large full logs directly for experiment comparison.
+- If metrics are missing, check `tools/project_results_adapter.py` before expanding log parsing.
+- Compare output is an experiment artifact and should not be committed unless the user explicitly asks.
+
 ## Do Not Commit
 
 - `papers/`
