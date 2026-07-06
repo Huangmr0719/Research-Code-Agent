@@ -366,6 +366,8 @@ Before the bridge starts, it checks `http://127.0.0.1:4096/doc` and requires the
 - `POST /api/session/{sessionID}/wait`
 - `GET /api/session/{sessionID}/message`
 
+When `OPENCODE_SERVER_PASSWORD` is set, OpenCode 1.17.13 protects the HTTP API with Basic Auth using username `opencode` and that password. The bridge reads `OPENCODE_SERVER_PASSWORD` and sends the matching Authorization header.
+
 ### Bridge Configuration
 
 Copy the example env file to a private location:
@@ -383,6 +385,7 @@ Required values:
 FEISHU_APP_ID=cli_xxx
 FEISHU_APP_SECRET=xxx
 FEISHU_ALLOWED_OPEN_IDS=ou_xxx,ou_yyy
+# RCA_FEISHU_ALLOWED_OPEN_IDS is also accepted
 OPENCODE_BASE_URL=http://127.0.0.1:4096
 OPENCODE_SERVER_PASSWORD=change-this-long-random-password
 RCA_PROJECT_DIR=/path/to/baseline-project
@@ -432,6 +435,12 @@ Check logs:
 ```bash
 journalctl -u opencode-serve.service -f
 journalctl -u rca-feishu-opencode-bridge.service -f
+```
+
+For foreground testing on macOS, use:
+
+```bash
+python3 tools/feishu_opencode_bridge.py --env feishu_bridge.env
 ```
 
 ### Bridge Behavior

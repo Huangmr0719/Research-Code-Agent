@@ -10,6 +10,7 @@ Feishu in text chunks.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import sqlite3
@@ -59,6 +60,13 @@ class BridgeError(RuntimeError):
     pass
 
 
+class OpenCodeHttpError(BridgeError):
+    def __init__(self, status_code: int, details: str):
+        super().__init__(f"OpenCode HTTP {status_code}: {details}")
+        self.status_code = status_code
+        self.details = details
+
+
 def load_env_file(path: str) -> None:
     env_path = Path(path)
     if not env_path.exists():
@@ -84,9 +92,10 @@ def env_int(name: str, default: int) -> int:
 
 
 def load_config() -> BridgeConfig:
+    allowed_env = os.environ.get("FEISHU_ALLOWED_OPEN_IDS") or os.environ.get("RCA_FEISHU_ALLOWED_OPEN_IDS", "")
     allowed = {
         item.strip()
-        for item in os.environ.get("FEISHU_ALLOWED_OPEN_IDS", "").split(",")
+        for item in allowed_env.split(",")
         if item.strip()
     }
     config = BridgeConfig(
@@ -168,8 +177,8 @@ class OpenCodeClient:
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
         if self.config.opencode_password:
-            headers["Authorization"] = f"Bearer {self.config.opencode_password}"
-            headers["X-OpenCode-Server-Password"] = self.config.opencode_password
+            token = base64.b64encode(f"opencode:{self.config.opencode_password}".encode("utf-8"))
+            headers["Authorization"] = "Basic " + token.decode("ascii")
         return headers
 
     def _request(self, method: str, path: str, payload: Optional[dict[str, Any]] = None) -> Any:
@@ -187,7 +196,7 @@ class OpenCodeClient:
                 return json.loads(body.decode("utf-8"))
         except urllib.error.HTTPError as exc:
             details = exc.read().decode("utf-8", "replace")
-            raise BridgeError(f"OpenCode HTTP {exc.code}: {details}") from exc
+            raise OpenCodeHttpError(exc.code, details) from exc
         except (urllib.error.URLError, TimeoutError) as exc:
             raise BridgeError(f"OpenCode request failed: {exc}") from exc
 
@@ -259,9 +268,28 @@ class OpenCodeClient:
         self._request("POST", f"/api/session/{session_id}/prompt", payload)
 
     def _wait(self, session_id: str) -> None:
-        self._request("POST", f"/api/session/{session_id}/wait")
+        try:
+            self._request("POST", f"/api/session/{session_id}/wait")
+            return
+        except OpenCodeHttpError as exc:
+            if exc.status_code != 503 or "Session wait is not available yet" not in exc.details:
+                raise
+        self._poll_until_assistant_text(session_id)
+
+    def _poll_until_assistant_text(self, session_id: str) -> None:
+        deadline = time.time() + self.config.timeout_seconds
+        while time.time() < deadline:
+            if self._assistant_texts(session_id, completed_only=True):
+                return
+            time.sleep(2)
+        raise BridgeError(f"OpenCode session timed out after {self.config.timeout_seconds}s")
 
     def _collect_output(self, session_id: str) -> str:
+        texts = self._assistant_texts(session_id, completed_only=False)
+        output = "\n\n".join(texts).strip()
+        return output or "OpenCode 已完成，但未返回文本输出。"
+
+    def _assistant_texts(self, session_id: str, completed_only: bool) -> list[str]:
         data = self._request("GET", f"/api/session/{session_id}/message?order=asc&limit=50")
         messages = data.get("data", []) if isinstance(data, dict) else []
         texts: list[str] = []
@@ -270,11 +298,14 @@ class OpenCodeClient:
             parts = item.get("parts", []) if isinstance(item, dict) else []
             if message.get("role") != "assistant":
                 continue
+            if message.get("error"):
+                raise BridgeError("OpenCode assistant error: " + json.dumps(message["error"], ensure_ascii=False))
+            if completed_only and not message.get("time", {}).get("completed"):
+                continue
             for part in parts:
                 if isinstance(part, dict) and part.get("type") == "text" and part.get("text"):
                     texts.append(part["text"])
-        output = "\n\n".join(texts).strip()
-        return output or "OpenCode 已完成，但未返回文本输出。"
+        return texts
 
 
 class ChatLockRegistry:
@@ -441,7 +472,7 @@ def start_feishu_bridge(config: BridgeConfig) -> None:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Feishu long-connection bridge to local OpenCode")
-    parser.add_argument("--env-file", help="load environment variables from a file")
+    parser.add_argument("--env-file", "--env", dest="env_file", help="load environment variables from a file")
     parser.add_argument("--check", action="store_true", help="validate config, sqlite, and OpenCode /doc")
     return parser
 
