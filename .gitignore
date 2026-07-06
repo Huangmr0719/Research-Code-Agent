@@ -1,0 +1,6 @@
+logs/
+outputs/
+experiments/runs/
+*.bak.*
+__pycache__/
+.env
