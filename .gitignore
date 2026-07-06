@@ -46,10 +46,13 @@ events.out.tfevents.*
 # Secrets and credentials
 .env
 .env.*
+feishu_bridge.env
 secrets.json
 credentials.json
 token.json
 feishu_config.json
+feishu_opencode_bridge.sqlite3
+feishu_opencode_bridge.sqlite3-*
 
 # Python cache
 __pycache__/

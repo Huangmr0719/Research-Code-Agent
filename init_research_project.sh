@@ -82,6 +82,7 @@ copy_generic_tools() {
   copy_file "$SCRIPT_DIR/tools/compare_experiments.py" "$TARGET_DIR/tools/compare_experiments.py"
   copy_file "$SCRIPT_DIR/tools/test_feishu_notify.sh" "$TARGET_DIR/tools/test_feishu_notify.sh"
   copy_file "$SCRIPT_DIR/tools/init_paper_context.sh" "$TARGET_DIR/tools/init_paper_context.sh"
+  copy_file "$SCRIPT_DIR/tools/feishu_opencode_bridge.py" "$TARGET_DIR/tools/feishu_opencode_bridge.py"
 
   chmod +x "$TARGET_DIR/tools/run_with_feishu_notify.sh"
   chmod +x "$TARGET_DIR/tools/feishu_notify.py"
@@ -90,6 +91,7 @@ copy_generic_tools() {
   chmod +x "$TARGET_DIR/tools/compare_experiments.py"
   chmod +x "$TARGET_DIR/tools/test_feishu_notify.sh"
   chmod +x "$TARGET_DIR/tools/init_paper_context.sh"
+  chmod +x "$TARGET_DIR/tools/feishu_opencode_bridge.py"
 }
 
 main() {
@@ -105,9 +107,13 @@ main() {
   require_file "$SCRIPT_DIR/tools/project_results_adapter.py"
   require_file "$SCRIPT_DIR/tools/test_feishu_notify.sh"
   require_file "$SCRIPT_DIR/tools/init_paper_context.sh"
+  require_file "$SCRIPT_DIR/tools/feishu_opencode_bridge.py"
   require_file "$SCRIPT_DIR/templates/AGENTS.md"
   require_file "$SCRIPT_DIR/templates/README_AGENT_WORKFLOW.md"
   require_file "$SCRIPT_DIR/templates/PAPER_CONTEXT_TEMPLATE.md"
+  require_file "$SCRIPT_DIR/templates/feishu_bridge.env.example"
+  require_file "$SCRIPT_DIR/templates/systemd/opencode-serve.service"
+  require_file "$SCRIPT_DIR/templates/systemd/rca-feishu-opencode-bridge.service"
   require_file "$SCRIPT_DIR/examples/toy_success.sh"
   require_file "$SCRIPT_DIR/examples/toy_failed.sh"
 
@@ -139,6 +145,9 @@ main() {
   copy_file "$SCRIPT_DIR/templates/AGENTS.md" "$TARGET_DIR/AGENTS.md"
   copy_file "$SCRIPT_DIR/templates/README_AGENT_WORKFLOW.md" "$TARGET_DIR/README_AGENT_WORKFLOW.md"
   copy_file "$SCRIPT_DIR/templates/PAPER_CONTEXT_TEMPLATE.md" "$TARGET_DIR/templates/PAPER_CONTEXT_TEMPLATE.md"
+  copy_file "$SCRIPT_DIR/templates/feishu_bridge.env.example" "$TARGET_DIR/templates/feishu_bridge.env.example"
+  copy_file "$SCRIPT_DIR/templates/systemd/opencode-serve.service" "$TARGET_DIR/templates/systemd/opencode-serve.service"
+  copy_file "$SCRIPT_DIR/templates/systemd/rca-feishu-opencode-bridge.service" "$TARGET_DIR/templates/systemd/rca-feishu-opencode-bridge.service"
   copy_file "$SCRIPT_DIR/examples/toy_success.sh" "$TARGET_DIR/examples/toy_success.sh"
   copy_file "$SCRIPT_DIR/examples/toy_failed.sh" "$TARGET_DIR/examples/toy_failed.sh"
 
@@ -167,6 +176,9 @@ Toy test commands:
   ./tools/run_with_feishu_notify.sh --name toy_interrupt -- bash -c "sleep 60"
 
 For Feishu delivery, configure an installed Feishu CLI or set FEISHU_CLI_SEND_COMMAND.
+
+Optional Feishu-OpenCode Bridge prototype:
+  See README.md and templates/feishu_bridge.env.example.
 EOF
   fi
 }

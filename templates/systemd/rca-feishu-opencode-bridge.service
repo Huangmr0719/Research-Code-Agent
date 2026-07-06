@@ -1,0 +1,16 @@
+[Unit]
+Description=Research-Code-Agent Feishu to OpenCode bridge
+After=network.target opencode-serve.service
+Requires=opencode-serve.service
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/baseline-project
+EnvironmentFile=/etc/research-code-agent/feishu-bridge.env
+ExecStart=/usr/bin/env python3 /path/to/baseline-project/tools/feishu_opencode_bridge.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

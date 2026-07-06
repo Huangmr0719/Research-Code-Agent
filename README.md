@@ -10,14 +10,15 @@
 - summary.json / summary.md
 - summary-based experiment comparison
 - minimal paper context workflow
+- Feishu-OpenCode Bridge prototype
 - on-demand OpenCode analysis
 - project_results_adapter（项目级 metrics 适配）
 - toy success / failed / interrupted tests
 - Feishu smoke test
 
-技术栈：bash + Python 标准库，无外部依赖。不存储 Feishu 凭证。
+技术栈：bash + Python 标准库。核心实验工具无外部依赖；可选 Feishu-OpenCode Bridge 需要 Feishu 官方 `lark-oapi` SDK。不存储 Feishu 凭证。
 
-当前不做：gateway、MCP、Hermes、botmux、飞书双向控制。
+当前不做：gateway、MCP、Hermes、botmux、webhook、内网穿透、飞书审批控制。
 
 ## Install Once
 
@@ -54,10 +55,15 @@ tools/
   analyze_with_agent.py
   compare_experiments.py
   init_paper_context.sh
+  feishu_opencode_bridge.py
   project_results_adapter.py
   test_feishu_notify.sh
 templates/
   PAPER_CONTEXT_TEMPLATE.md
+  feishu_bridge.env.example
+  systemd/
+    opencode-serve.service
+    rca-feishu-opencode-bridge.service
 logs/
 outputs/
 papers/
@@ -311,6 +317,132 @@ Agent 分析不可用。请查看 facts 和 log tail。
 ```
 
 Feishu cards show `实验备注`, `运行概览`, `核心指标`, `Agent 分析`, `日志摘要`, and `运行命令`.
+
+## Feishu-OpenCode Bridge Prototype
+
+v0.5.0 adds an optional thin bridge for remote OpenCode access from Feishu:
+
+```text
+Feishu long connection
+  -> open_id whitelist
+  -> sqlite message_id dedupe
+  -> per-chat lock
+  -> immediate "收到，处理中。"
+  -> local OpenCode server at 127.0.0.1:4096
+  -> chunked Feishu text replies
+```
+
+The bridge does not implement `/status`, `/summary`, `/run`, or any Python command router. It does not use webhook, public ports, tunneling, streaming progress, approval cards, MCP, Hermes, or botmux. OpenCode is responsible for understanding and executing the user request.
+
+Long-running experiments must still be launched through:
+
+```bash
+./tools/run_with_feishu_notify.sh --name <experiment_name> -- <command>
+```
+
+### Feishu App Setup
+
+Create a Feishu self-built app and enable long connection event delivery. Subscribe to the message receive event for bot chats, then install the app into the target chat. Record:
+
+- app id
+- app secret
+- allowed user `open_id` values
+
+Only `open_id` is used for the bridge whitelist.
+
+### OpenCode Local Server
+
+Run OpenCode only on localhost:
+
+```bash
+export OPENCODE_SERVER_PASSWORD="<long-random-password>"
+opencode serve --hostname 127.0.0.1 --port 4096
+```
+
+Before the bridge starts, it checks `http://127.0.0.1:4096/doc` and requires these OpenCode v2 API paths:
+
+- `POST /api/session`
+- `POST /api/session/{sessionID}/prompt`
+- `POST /api/session/{sessionID}/wait`
+- `GET /api/session/{sessionID}/message`
+
+### Bridge Configuration
+
+Copy the example env file to a private location:
+
+```bash
+sudo mkdir -p /etc/research-code-agent
+sudo cp templates/feishu_bridge.env.example /etc/research-code-agent/feishu-bridge.env
+sudo chmod 600 /etc/research-code-agent/feishu-bridge.env
+sudo $EDITOR /etc/research-code-agent/feishu-bridge.env
+```
+
+Required values:
+
+```bash
+FEISHU_APP_ID=cli_xxx
+FEISHU_APP_SECRET=xxx
+FEISHU_ALLOWED_OPEN_IDS=ou_xxx,ou_yyy
+OPENCODE_BASE_URL=http://127.0.0.1:4096
+OPENCODE_SERVER_PASSWORD=change-this-long-random-password
+RCA_PROJECT_DIR=/path/to/baseline-project
+RCA_BRIDGE_DB=/path/to/baseline-project/logs/feishu_opencode_bridge.sqlite3
+```
+
+The copied env file is private configuration and must not be committed.
+
+Install the Feishu Python SDK in the runtime environment used by systemd:
+
+```bash
+python3 -m pip install --user lark-oapi
+```
+
+### Permission Boundary
+
+The bridge prompt is only a behavior hint, not a security boundary. Real restrictions must come from:
+
+- `opencode.json` permission rules;
+- the Unix user running the systemd services;
+- filesystem ownership and write permissions;
+- keeping `opencode serve` bound to `127.0.0.1`.
+
+Use a restricted service user if the server is shared. Do not give OpenCode write access to datasets, checkpoints, private credentials, or unrelated projects unless needed.
+
+### systemd Deployment
+
+Copy the service templates and edit paths:
+
+```bash
+sudo cp templates/systemd/opencode-serve.service /etc/systemd/system/opencode-serve.service
+sudo cp templates/systemd/rca-feishu-opencode-bridge.service /etc/systemd/system/rca-feishu-opencode-bridge.service
+sudo $EDITOR /etc/systemd/system/opencode-serve.service
+sudo $EDITOR /etc/systemd/system/rca-feishu-opencode-bridge.service
+```
+
+Then enable both services:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now opencode-serve.service
+sudo systemctl enable --now rca-feishu-opencode-bridge.service
+```
+
+Check logs:
+
+```bash
+journalctl -u opencode-serve.service -f
+journalctl -u rca-feishu-opencode-bridge.service -f
+```
+
+### Bridge Behavior
+
+- Non-whitelisted `open_id` messages are ignored.
+- Duplicate `message_id` values are skipped via sqlite.
+- The same `chat_id` can process only one message at a time.
+- If a chat is busy, the bridge replies with a short busy message.
+- OpenCode output is split into Feishu text chunks.
+- If OpenCode times out or fails, the bridge replies with a short failure message and logs the exception.
+- The bridge only forwards text messages in this prototype.
 
 ## Agent Rule
 

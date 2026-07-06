@@ -64,13 +64,17 @@ This repository uses the Research-Code-Agent workflow.
 - MCP
 - Hermes
 - botmux
-- Feishu bidirectional control
+- webhook-based Feishu control
+- public ports or tunneling for OpenCode
 - Auto `/next` / `/fix` / `/run` control systems
+- Python command routers
 
 ## Keep
 
 - `analyze_with_agent.py` on-demand OpenCode analysis is allowed.
-- Do not add a persistent OpenCode daemon or command listener.
+- The optional Feishu-OpenCode Bridge may run `opencode serve` on `127.0.0.1` only.
+- The bridge must not decide user intent or implement hard-coded `/status`, `/summary`, or `/run` semantics.
+- Real safety boundaries must come from `opencode.json`, the service user, and filesystem permissions.
 
 ## Escalation
 
