@@ -372,6 +372,7 @@ See:
 - `docs/opencode-native-simplification.md`
 - `docs/opencode-native-smoke-test.md`
 - `docs/opencode-lark-evaluation.md`
+- `docs/opencode-lark-throwaway-test.md`
 - `docs/opencode-sdk-evaluation.md`
 
 ### Feishu App Setup

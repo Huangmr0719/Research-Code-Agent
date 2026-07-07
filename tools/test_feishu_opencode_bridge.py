@@ -385,6 +385,7 @@ def test_docs_and_templates() -> None:
         "opencode-native-simplification.md",
         "opencode-native-smoke-test.md",
         "opencode-lark-evaluation.md",
+        "opencode-lark-throwaway-test.md",
         "opencode-sdk-evaluation.md",
     ]:
         assert (root / "docs" / doc_name).read_text(encoding="utf-8")
@@ -392,6 +393,9 @@ def test_docs_and_templates() -> None:
     assert "opencode-lark`" in lark_eval
     assert "Partially usable" in lark_eval
     assert "open_id allowlist" in lark_eval
+    throwaway_eval = (root / "docs" / "opencode-lark-throwaway-test.md").read_text(encoding="utf-8")
+    assert "blocked before real Feishu end-to-end" in throwaway_eval
+    assert "invalid appId" in throwaway_eval
     for command_name in [
         "experiment-run.md",
         "experiment-summary.md",

@@ -14,6 +14,8 @@ It should be treated as the primary replacement candidate for the Feishu entry l
 
 Do not expand the custom Python bridge while this candidate remains viable. Keep the Python bridge as fallback until `opencode-lark` passes a real deployment test with RCA tools.
 
+v0.6.4 update: the local throwaway test verified installation, `opencode serve`, OpenCode health, and `opencode-lark` startup through the OpenCode/SSE/database phases. The real Feishu end-to-end test was blocked because no configured throwaway Feishu App credentials and no installed test bot/chat were available in that run. See `docs/opencode-lark-throwaway-test.md`.
+
 ## What Was Verified
 
 Local environment:
