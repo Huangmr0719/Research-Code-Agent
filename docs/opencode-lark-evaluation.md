@@ -8,6 +8,45 @@ As of this repo update, public search and local package probing did not confirm 
 
 Recommendation: **needs small-scale verification** before more bridge work. Search npm/GitHub again from the deployment server, then test any candidate in a throwaway Feishu app.
 
+## Minimal Verification Commands
+
+Run these from the deployment server or a network-enabled development machine:
+
+```bash
+npm view opencode-lark
+npm search opencode lark feishu
+npm search opencode feishu
+```
+
+If GitHub CLI is available:
+
+```bash
+gh search repos opencode-lark
+gh search repos "opencode feishu"
+gh search repos "opencode lark"
+```
+
+For any candidate package, verify in a throwaway directory:
+
+```bash
+mkdir -p /tmp/opencode-lark-check
+cd /tmp/opencode-lark-check
+npm init -y
+npm install <candidate-package>
+```
+
+Record:
+
+- package version and repository URL;
+- runtime requirement, such as Node or Bun;
+- whether it uses Feishu WebSocket, not webhook;
+- whether it can send a normal Feishu text/card reply;
+- how it maps Feishu chat/thread to OpenCode sessions;
+- how it handles OpenCode permissions and approval prompts;
+- whether it can work with `opencode serve` bound to `127.0.0.1`.
+
+Do not migrate production traffic until these checks pass.
+
 ## Evaluation Checklist
 
 1. **Package exists**: not confirmed.

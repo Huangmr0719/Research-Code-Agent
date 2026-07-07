@@ -98,8 +98,9 @@ This repository uses the Research-Code-Agent workflow.
 - For experiment summaries, prefer existing summaries/logs; call `tools/summarize_experiment.py` only when needed.
 - For experiment comparisons, prefer `tools/compare_experiments.py`.
 - For log analysis, read only project logs and experiment artifacts. Do not read env files, secrets, SSH keys, or tokens.
+- Do not inspect `.rca/` unless the user is explicitly debugging bridge runtime state.
 - If `opencode-pty` is available, OpenCode may use it to manage long background sessions; the bridge must not call `opencode-pty` directly.
-- Return conclusions, status, paths, and next steps. Do not return sensitive content.
+- Return conclusions, status, paths, and next steps. Separate facts from inference. Do not return sensitive content.
 - Do not execute `rm`, broad `chmod`, `scp`, `curl` uploads, or `git push`.
 - Do not bypass the wrapper to run naked long tasks.
 - `.opencode/commands` files are OpenCode action templates, not user-facing commands.

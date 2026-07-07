@@ -8,3 +8,4 @@ Use this as an OpenCode action template when the user asks about recent or speci
 - Read only project logs and summaries.
 - Do not read `.env`, `feishu_bridge.env`, SSH keys, tokens, or credentials.
 - Return concise status, metrics, log path, summary path, likely issue, and next step.
+- Separate facts from inference. Say when evidence is insufficient.

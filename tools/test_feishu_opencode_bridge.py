@@ -370,6 +370,7 @@ def test_docs_and_templates() -> None:
     assert "tail -f .rca/feishu_bridge_audit.jsonl" in readme
     assert "opencode-pty" in agents
     assert "Feishu Remote Natural-Language Workflow" in agents
+    assert "Do not inspect `.rca/`" in agents
     assert "/summary" in agents
     assert "tools/run_with_feishu_notify.sh" in agents
     assert "BRIDGE_REPLY_FORMAT=card" in env_example
@@ -382,6 +383,7 @@ def test_docs_and_templates() -> None:
     assert "LARK_APP_SECRET" not in service_text
     for doc_name in [
         "opencode-native-simplification.md",
+        "opencode-native-smoke-test.md",
         "opencode-lark-evaluation.md",
         "opencode-sdk-evaluation.md",
     ]:

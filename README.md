@@ -370,6 +370,7 @@ The `.opencode/commands/` files are OpenCode action templates. They are not user
 See:
 
 - `docs/opencode-native-simplification.md`
+- `docs/opencode-native-smoke-test.md`
 - `docs/opencode-lark-evaluation.md`
 - `docs/opencode-sdk-evaluation.md`
 
