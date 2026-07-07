@@ -332,6 +332,18 @@ Feishu Channel SDK Python
   -> static Feishu card replies, with markdown fallback
 ```
 
+v0.6.0 keeps the bridge thin and adds stable deployment support plus `opencode-pty` guidance for background session management. The intended long-task path is:
+
+```text
+Feishu
+  -> bridge
+  -> OpenCode
+  -> opencode-pty
+  -> tools/run_with_feishu_notify.sh / RCA tools
+  -> OpenCode summary
+  -> Feishu static card
+```
+
 The bridge does not implement `/status`, `/summary`, `/run`, or any Python command router. It does not use Vercel Chat SDK, `@larksuite/vercel-chat-adapter`, Feishu CLI, DingTalk MCP, webhook, public ports, tunneling, streaming progress, approval cards, MCP, Hermes, botmux, or multi-platform routing. Feishu is the only remote entrypoint. OpenCode is responsible for understanding and executing the user request.
 
 Long-running experiments must still be launched through:
@@ -394,10 +406,17 @@ OPENCODE_BASE_URL=http://127.0.0.1:4096
 OPENCODE_SERVER_USERNAME=opencode
 OPENCODE_SERVER_PASSWORD=change-this-long-random-password
 RCA_PROJECT_DIR=/path/to/baseline-project
-BRIDGE_DB_PATH=/path/to/baseline-project/logs/feishu_opencode_bridge.sqlite3
-BRIDGE_LOG_PATH=/path/to/baseline-project/logs/feishu_opencode_bridge.jsonl
+BRIDGE_DB_PATH=/path/to/baseline-project/.rca/feishu_bridge.sqlite3
+BRIDGE_LOG_PATH=/path/to/baseline-project/.rca/feishu_bridge_audit.jsonl
 BRIDGE_TIMEOUT_SECONDS=600
 BRIDGE_REPLY_FORMAT=card
+BRIDGE_HEALTHCHECK_ENABLED=true
+BRIDGE_HEALTHCHECK_INTERVAL_SECONDS=300
+BRIDGE_HEALTHCHECK_FAILURE_THRESHOLD=3
+BRIDGE_ADMIN_CHAT_ID=
+BRIDGE_AUDIT_MAX_BYTES=10485760
+BRIDGE_AUDIT_BACKUP_COUNT=5
+BRIDGE_PROCESSED_MESSAGE_RETENTION_DAYS=7
 ```
 
 The copied env file is private configuration and must not be committed.
@@ -407,6 +426,43 @@ Install Feishu Channel SDK Python in the runtime environment used by systemd:
 ```bash
 python3 -m pip install --user lark-channel-sdk
 ```
+
+### Foreground Deployment Check
+
+Run the first server test in foreground before installing systemd:
+
+```bash
+git clone https://github.com/Huangmr0719/Research-Code-Agent.git
+cd /path/to/baseline-project
+bash /path/to/Research-Code-Agent/init_research_project.sh
+cp templates/feishu_bridge.env.example feishu_bridge.env
+chmod 600 feishu_bridge.env
+mkdir -p .rca
+chmod 700 .rca
+```
+
+Edit `feishu_bridge.env`, rotate the Feishu App Secret if it was used during local testing, then start OpenCode in terminal 1:
+
+```bash
+set -a
+. ./feishu_bridge.env
+set +a
+opencode serve --hostname 127.0.0.1 --port 4096
+```
+
+Start the bridge in terminal 2:
+
+```bash
+python3 tools/feishu_opencode_bridge.py --env feishu_bridge.env
+```
+
+In Feishu, send a simple project question and confirm:
+
+- the bot immediately replies `收到，处理中。`;
+- the final reply is a static card by default;
+- setting `BRIDGE_REPLY_FORMAT=markdown` falls back to markdown/text;
+- OpenCode can see and use `opencode-pty` if installed;
+- long experiments are launched through `tools/run_with_feishu_notify.sh`.
 
 ### Permission Boundary
 
@@ -418,6 +474,27 @@ The bridge prompt is only a behavior hint, not a security boundary. Real restric
 - keeping `opencode serve` bound to `127.0.0.1`.
 
 Use a restricted service user if the server is shared. Do not give OpenCode write access to datasets, checkpoints, private credentials, or unrelated projects unless needed.
+
+Recommended local file permissions:
+
+```bash
+chmod 600 feishu_bridge.env
+chmod 700 .rca
+chmod 600 .rca/feishu_bridge.sqlite3
+chmod 600 .rca/feishu_bridge_audit.jsonl
+```
+
+If sqlite or audit files do not exist yet, run the bridge once and then apply the file `chmod` commands. `feishu_bridge.env`, `.rca/`, and audit logs are ignored by Git. Audit is local troubleshooting material only; it is not returned to Feishu.
+
+`templates/opencode.remote.example.json` contains a lightweight permission-policy example for the remote Feishu entry. Treat it as a checklist and adapt it to your installed OpenCode version. It should express these boundaries:
+
+- Allow reading project docs, `AGENTS.md`, `PAPER_CONTEXT.md`, logs, and `experiments/summaries/`.
+- Allow Research-Code-Agent tools for summary, comparison, and notification workflows.
+- Allow long experiments only through `tools/run_with_feishu_notify.sh`.
+- Allow `opencode-pty` to start, read, and abort controlled background sessions inside the project.
+- Deny or require confirmation for `feishu_bridge.env`, `.env`, secrets, SSH keys, token files, destructive file operations, uploads, `git push`, naked long training commands, and pty access outside the project.
+
+`opencode-pty` is a background session manager, not a permission bypass. It must obey OpenCode permissions and Linux filesystem access.
 
 ### Reply Safety and Cards
 
@@ -442,6 +519,60 @@ The bridge applies two separate safety filters before replying to Feishu:
 
 Audit logs are local troubleshooting material. They are not sent back to Feishu, are ignored by Git, and should be protected with normal file permissions.
 
+### Healthcheck, Audit, and Retention
+
+The bridge can periodically call OpenCode `GET /global/health`:
+
+```bash
+BRIDGE_HEALTHCHECK_ENABLED=true
+BRIDGE_HEALTHCHECK_INTERVAL_SECONDS=300
+BRIDGE_HEALTHCHECK_FAILURE_THRESHOLD=3
+BRIDGE_ADMIN_CHAT_ID=oc_xxx
+```
+
+After consecutive failures reach the threshold, the bridge writes audit events and, if `BRIDGE_ADMIN_CHAT_ID` is set, sends a Feishu alert. Without an admin chat, it only writes audit. Healthcheck runs in the background and does not block normal message handling. Recovery is written to audit.
+
+Audit rotation is built in:
+
+```bash
+BRIDGE_AUDIT_MAX_BYTES=10485760
+BRIDGE_AUDIT_BACKUP_COUNT=5
+```
+
+When the audit file exceeds the size limit, it is rotated locally without external `logrotate`. Rotation failures are printed to stderr and do not stop bridge message handling.
+
+Message dedupe rows are cleaned on bridge startup:
+
+```bash
+BRIDGE_PROCESSED_MESSAGE_RETENTION_DAYS=7
+```
+
+This only cleans old `processed_messages`; `chat_sessions` is retained so Feishu chats can continue using their OpenCode sessions.
+
+### opencode-pty
+
+`opencode-pty` is optional background session management for OpenCode. It does not replace `tools/run_with_feishu_notify.sh` and does not change the bridge into a router.
+
+Use it this way:
+
+1. Confirm `opencode-pty` is available to the OpenCode runtime.
+2. Ask OpenCode from Feishu to start a controlled background session.
+3. Inside the session, run a wrapped command such as:
+
+```bash
+./tools/run_with_feishu_notify.sh --name toy_success -- bash examples/toy_success.sh
+```
+
+4. Ask OpenCode to read the pty session output buffer and generated summary.
+5. Ask OpenCode to abort the controlled pty session if needed.
+
+Avoid these patterns:
+
+- bridge parsing the Feishu message and directly calling `opencode-pty`;
+- pty sessions running naked long commands instead of `tools/run_with_feishu_notify.sh`;
+- pty sessions executing arbitrary user-provided shell;
+- pty reading non-project directories or sensitive files.
+
 ### systemd Deployment
 
 Copy the service templates and edit paths:
@@ -453,12 +584,19 @@ sudo $EDITOR /etc/systemd/system/opencode-serve.service
 sudo $EDITOR /etc/systemd/system/rca-feishu-opencode-bridge.service
 ```
 
+Replace `/opt/baseline-project` and `/etc/research-code-agent/feishu-bridge.env` with your actual server paths. Do not put secrets directly in service files.
+
 Then enable both services:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now opencode-serve.service
-sudo systemctl enable --now rca-feishu-opencode-bridge.service
+sudo systemctl enable opencode-serve.service
+sudo systemctl enable rca-feishu-opencode-bridge.service
+sudo systemctl start opencode-serve.service
+sudo systemctl start rca-feishu-opencode-bridge.service
+sudo systemctl status opencode-serve.service
+sudo systemctl status rca-feishu-opencode-bridge.service
+sudo systemctl restart rca-feishu-opencode-bridge.service
 ```
 
 Check logs:
@@ -466,6 +604,8 @@ Check logs:
 ```bash
 journalctl -u opencode-serve.service -f
 journalctl -u rca-feishu-opencode-bridge.service -f
+tail -f .rca/feishu_bridge_audit.jsonl
+curl -u opencode:$OPENCODE_SERVER_PASSWORD http://127.0.0.1:4096/global/health
 ```
 
 For foreground testing on macOS, use:
@@ -483,6 +623,21 @@ python3 tools/feishu_opencode_bridge.py --env feishu_bridge.env
 - OpenCode output is sent as a static Feishu card by default; long output or card failures fall back to Feishu text chunks.
 - If OpenCode times out or fails, the bridge replies with a short failure message and logs the exception.
 - The bridge only forwards text messages in this prototype.
+
+### Troubleshooting
+
+- Feishu has no reply: check app WebSocket/event subscription, bot permissions, `RCA_FEISHU_ALLOWED_OPEN_IDS`, and `journalctl -u rca-feishu-opencode-bridge.service -f`.
+- Card sending fails: set `BRIDGE_REPLY_FORMAT=markdown`, restart the bridge, and check audit for `card_send_failed`.
+- OpenCode healthcheck failed: run `systemctl status opencode-serve.service` and `curl -u opencode:$OPENCODE_SERVER_PASSWORD http://127.0.0.1:4096/global/health`.
+- `session_recreated` appears: OpenCode was likely restarted and the bridge created a fresh session for that chat.
+- `open_id` not in whitelist: add the user's Feishu `open_id` to `RCA_FEISHU_ALLOWED_OPEN_IDS` and restart the bridge.
+- Env permission errors: use `chmod 600 feishu_bridge.env`, `chmod 700 .rca`, then restart.
+- systemd cannot find Python or OpenCode: edit `ExecStart` to an absolute path from `which python3` or `which opencode`.
+- `lark_channel` is missing: install `lark-channel-sdk` in the same Python environment used by systemd.
+- `opencode-pty` is unavailable: install or expose it to OpenCode, then ask OpenCode to confirm tool availability.
+- pty session start failed: check OpenCode permission rules and service-user filesystem permissions.
+- Long task lacks wrapper logs/summary: rerun it through `tools/run_with_feishu_notify.sh`.
+- Markdown fallback test: set `BRIDGE_REPLY_FORMAT=markdown` and restart `rca-feishu-opencode-bridge.service`.
 
 ## Agent Rule
 

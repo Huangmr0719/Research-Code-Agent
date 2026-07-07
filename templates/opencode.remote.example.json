@@ -1,0 +1,24 @@
+{
+  "notes": [
+    "Illustrative remote-entry permission policy for Research-Code-Agent.",
+    "Adapt keys to your installed OpenCode version before using.",
+    "Prompt text is not a security boundary; enforce with OpenCode permissions and filesystem access."
+  ],
+  "allow_principles": [
+    "read README.md, AGENTS.md, PAPER_CONTEXT.md, logs/, experiments/summaries/",
+    "run Research-Code-Agent tools for summaries, comparisons, and notifications",
+    "run long experiments only through tools/run_with_feishu_notify.sh",
+    "use opencode-pty only for controlled background sessions inside this project",
+    "read opencode-pty session output buffers for status and summaries",
+    "abort controlled opencode-pty sessions when requested or timed out"
+  ],
+  "deny_or_confirm_principles": [
+    "read feishu_bridge.env, .env, secrets, tokens, ssh keys, or credentials",
+    "delete project files or run rm/chmod against project or credential paths",
+    "upload files or data with scp, curl, wget, rsync, or similar network tools",
+    "git push or publish repository changes from the remote Feishu entry",
+    "run naked long training commands outside tools/run_with_feishu_notify.sh",
+    "use opencode-pty to run arbitrary user-provided shell commands",
+    "use opencode-pty to inspect non-project directories or sensitive files"
+  ]
+}

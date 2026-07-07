@@ -8,6 +8,7 @@ PAPER_CONTEXT.md
 # Runtime logs and outputs
 logs/
 outputs/
+.rca/
 
 # Local release artifacts
 release-build/

@@ -1,10 +1,12 @@
 [Unit]
 Description=OpenCode local server for Research-Code-Agent
-After=network.target
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/path/to/baseline-project
+# Replace /opt/baseline-project and env path before installing.
+WorkingDirectory=/opt/baseline-project
 EnvironmentFile=/etc/research-code-agent/feishu-bridge.env
 ExecStart=/usr/bin/env opencode serve --hostname 127.0.0.1 --port 4096
 Restart=always

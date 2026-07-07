@@ -37,6 +37,7 @@ DEFAULT_UNAVAILABLE = "OpenCode 调用失败，请查看 bridge 日志。"
 DEFAULT_TIMEOUT = "处理超时，已尝试中止当前 OpenCode 会话任务，请到服务器检查日志。"
 DISPLAY_TEXT_FALLBACK = "OpenCode 已完成处理，但没有返回可展示文本。"
 VALID_REPLY_FORMATS = {"card", "markdown"}
+DEFAULT_AUDIT_MAX_BYTES = 10 * 1024 * 1024
 DEFAULT_SYSTEM_PROMPT = (
     "你是 Research-Code-Agent 远程助手。你运行在用户的科研代码服务器上。"
     "你只根据当前项目文件和用户消息工作；不要编造执行结果。"
@@ -66,6 +67,13 @@ class BridgeConfig:
     opencode_model_provider: str
     opencode_model_id: str
     reply_format: str
+    healthcheck_enabled: bool
+    healthcheck_interval_seconds: int
+    healthcheck_failure_threshold: int
+    admin_chat_id: str
+    audit_max_bytes: int
+    audit_backup_count: int
+    processed_message_retention_days: int
 
 
 class BridgeError(RuntimeError):
@@ -138,6 +146,13 @@ def env_int(name: str, default: int) -> int:
         raise BridgeError(f"{name} must be an integer") from exc
 
 
+def env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None or value == "":
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def load_config() -> BridgeConfig:
     allowed_env = os.environ.get("RCA_FEISHU_ALLOWED_OPEN_IDS") or os.environ.get("FEISHU_ALLOWED_OPEN_IDS", "")
     allowed = {
@@ -167,6 +182,13 @@ def load_config() -> BridgeConfig:
         opencode_model_provider=os.environ.get("OPENCODE_MODEL_PROVIDER", ""),
         opencode_model_id=os.environ.get("OPENCODE_MODEL_ID", ""),
         reply_format=reply_format,
+        healthcheck_enabled=env_bool("BRIDGE_HEALTHCHECK_ENABLED", True),
+        healthcheck_interval_seconds=env_int("BRIDGE_HEALTHCHECK_INTERVAL_SECONDS", 300),
+        healthcheck_failure_threshold=env_int("BRIDGE_HEALTHCHECK_FAILURE_THRESHOLD", 3),
+        admin_chat_id=os.environ.get("BRIDGE_ADMIN_CHAT_ID", ""),
+        audit_max_bytes=env_int("BRIDGE_AUDIT_MAX_BYTES", DEFAULT_AUDIT_MAX_BYTES),
+        audit_backup_count=env_int("BRIDGE_AUDIT_BACKUP_COUNT", 5),
+        processed_message_retention_days=env_int("BRIDGE_PROCESSED_MESSAGE_RETENTION_DAYS", 7),
     )
     missing = []
     if not config.app_id:
@@ -182,6 +204,30 @@ def load_config() -> BridgeConfig:
     if config.reply_format not in VALID_REPLY_FORMATS:
         raise BridgeError("BRIDGE_REPLY_FORMAT must be card or markdown")
     return config
+
+
+def rotate_file_if_needed(path: str, max_bytes: int, backup_count: int) -> None:
+    if max_bytes <= 0 or backup_count <= 0:
+        return
+    log_path = Path(path)
+    if not log_path.exists() or log_path.stat().st_size < max_bytes:
+        return
+    for index in range(backup_count - 1, 0, -1):
+        src = log_path.with_name(f"{log_path.name}.{index}")
+        dst = log_path.with_name(f"{log_path.name}.{index + 1}")
+        if src.exists():
+            os.replace(src, dst)
+    os.replace(log_path, log_path.with_name(f"{log_path.name}.1"))
+
+
+def append_audit_event(path: str, row: dict[str, Any], max_bytes: int, backup_count: int) -> None:
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    try:
+        rotate_file_if_needed(path, max_bytes, backup_count)
+    except Exception as exc:  # noqa: BLE001 - audit rotation must not break bridge handling.
+        print(f"audit rotation failed for {path}: {exc}", file=sys.stderr)
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
 class MessageStore:
@@ -270,6 +316,15 @@ class MessageStore:
                 """,
                 (chat_id, session_id, now, now),
             )
+
+    def cleanup_processed_messages(self, retention_days: int) -> int:
+        if retention_days <= 0:
+            return 0
+        cutoff = int(time.time()) - retention_days * 86400
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute("DELETE FROM processed_messages WHERE created_at < ?", (cutoff,))
+            return cursor.rowcount if cursor.rowcount is not None else 0
+
 
 class OpenCodeClient:
     def __init__(self, config: BridgeConfig):
@@ -504,6 +559,7 @@ class BridgeApp:
         self.config = config
         self.channel = channel
         self.store = MessageStore(config.db_path)
+        self._cleanup_processed_messages()
         self.chat_locks = ChatLockRegistry()
         self.opencode = OpenCodeClient(config)
 
@@ -606,6 +662,52 @@ class BridgeApp:
                 return
         await self._send_markdown(chat_id, message_id, text)
 
+    async def _send_admin_alert(self, text: str, status: str = "warning") -> None:
+        if not self.config.admin_chat_id:
+            return
+        if self.config.reply_format == "card":
+            try:
+                card = render_static_reply_card(
+                    title="Bridge 告警",
+                    content=redact_sensitive_text(text),
+                    status=status,
+                    tags=["healthcheck", "RCA"],
+                )
+                result = await self.channel.send(self.config.admin_chat_id, {"card": card}, {})
+                if hasattr(result, "success") and result.success is False:
+                    raise BridgeError(f"Feishu admin card send failed: {getattr(result, 'error', '')}")
+                return
+            except Exception as exc:  # noqa: BLE001 - alert fallback should be best-effort.
+                self._audit("healthcheck_alert_card_failed", "", self.config.admin_chat_id, "", str(exc))
+        try:
+            await self.channel.send(self.config.admin_chat_id, {"markdown": redact_sensitive_text(text)}, {})
+        except Exception as exc:  # noqa: BLE001
+            self._audit("healthcheck_alert_failed", "", self.config.admin_chat_id, "", str(exc))
+
+    async def healthcheck_loop(self) -> None:
+        if not self.config.healthcheck_enabled:
+            return
+        failures = 0
+        alerted = False
+        while True:
+            await asyncio.sleep(max(self.config.healthcheck_interval_seconds, 1))
+            try:
+                await asyncio.to_thread(self.opencode.health)
+                if failures:
+                    self._audit("healthcheck_recovered", "", "", "", f"previous_failures={failures}")
+                failures = 0
+                alerted = False
+            except Exception as exc:  # noqa: BLE001 - healthcheck is best-effort.
+                failures += 1
+                self._audit("healthcheck_failure", "", "", "", f"{failures}: {exc}")
+                if failures >= max(self.config.healthcheck_failure_threshold, 1) and not alerted:
+                    self._audit("healthcheck_failed_threshold", "", "", "", str(exc))
+                    await self._send_admin_alert(
+                        "OpenCode healthcheck failed. 请检查 opencode-serve.service 和 bridge audit 日志。",
+                        status="error",
+                    )
+                    alerted = True
+
     def _process_message(
         self,
         message_id: str,
@@ -640,8 +742,15 @@ class BridgeApp:
         self.store.save_chat_session(chat_id, session_id)
         return session_id
 
+    def _cleanup_processed_messages(self) -> None:
+        try:
+            removed = self.store.cleanup_processed_messages(self.config.processed_message_retention_days)
+            if removed:
+                self._audit("processed_messages_cleaned", "", "", "", f"removed={removed}")
+        except Exception as exc:  # noqa: BLE001 - cleanup must not prevent startup.
+            self._audit("processed_messages_cleanup_failed", "", "", "", str(exc))
+
     def _audit(self, status: str, message_id: str, chat_id: str, open_id: str, error: str = "") -> None:
-        Path(self.config.log_path).parent.mkdir(parents=True, exist_ok=True)
         row = {
             "time": int(time.time()),
             "status": status,
@@ -650,8 +759,12 @@ class BridgeApp:
             "open_id": open_id,
             "error": error,
         }
-        with open(self.config.log_path, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+        append_audit_event(
+            self.config.log_path,
+            row,
+            self.config.audit_max_bytes,
+            self.config.audit_backup_count,
+        )
 
 
 def start_feishu_bridge(config: BridgeConfig) -> None:
@@ -664,7 +777,15 @@ def start_feishu_bridge(config: BridgeConfig) -> None:
     app = BridgeApp(config, channel)
     app.opencode.validate_doc()
     channel.on("message", app.handle_message)
-    asyncio.run(channel.connect())
+
+    async def runner() -> None:
+        health_task = asyncio.create_task(app.healthcheck_loop())
+        try:
+            await channel.connect()
+        finally:
+            health_task.cancel()
+
+    asyncio.run(runner())
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

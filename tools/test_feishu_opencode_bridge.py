@@ -46,6 +46,7 @@ class MockOpenCode(bridge.OpenCodeClient):
         self.abort_called = False
         self.mode = "ok"
         self.send_calls = []
+        self.health_calls = 0
 
     def create_session(self, title=None):
         self.created += 1
@@ -71,6 +72,12 @@ class MockOpenCode(bridge.OpenCodeClient):
     def abort_session(self, session_id):
         self.abort_called = True
         return True
+
+    def health(self):
+        self.health_calls += 1
+        if self.mode == "health_fail":
+            raise bridge.OpenCodeUnavailableError("down")
+        return {"healthy": True, "version": "test"}
 
 
 class MockHttp404OpenCode(bridge.OpenCodeClient):
@@ -102,6 +109,13 @@ def make_config(tmpdir: str, chunk_chars: int = 80, reply_format: str = "card") 
         opencode_model_provider="",
         opencode_model_id="",
         reply_format=reply_format,
+        healthcheck_enabled=True,
+        healthcheck_interval_seconds=1,
+        healthcheck_failure_threshold=3,
+        admin_chat_id="",
+        audit_max_bytes=10 * 1024 * 1024,
+        audit_backup_count=5,
+        processed_message_retention_days=7,
     )
 
 
@@ -181,6 +195,44 @@ def test_session_404_mapping(config: bridge.BridgeConfig) -> None:
         pass
     else:
         raise AssertionError("404 session not found should map to OpenCodeSessionNotFound")
+
+
+def test_audit_rotation(tmpdir: str) -> None:
+    path = str(Path(tmpdir) / "audit.jsonl")
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).write_text("x" * 50, encoding="utf-8")
+    bridge.append_audit_event(path, {"status": "new"}, max_bytes=10, backup_count=2)
+    assert Path(path).exists()
+    assert Path(path + ".1").exists()
+    assert "new" in Path(path).read_text(encoding="utf-8")
+
+    original_replace = bridge.os.replace
+    try:
+        bridge.os.replace = lambda src, dst: (_ for _ in ()).throw(OSError("no rotate"))
+        bridge.append_audit_event(path, {"status": "after_failure"}, max_bytes=1, backup_count=2)
+    finally:
+        bridge.os.replace = original_replace
+    assert "after_failure" in Path(path).read_text(encoding="utf-8")
+
+
+def test_processed_message_cleanup(tmpdir: str) -> None:
+    store = bridge.MessageStore(str(Path(tmpdir) / "cleanup.sqlite3"))
+    old_time = int(__import__("time").time()) - 9 * 86400
+    new_time = int(__import__("time").time())
+    with store._connect() as conn:
+        conn.execute(
+            "INSERT INTO processed_messages(message_id, chat_id, open_id, created_at, status, error) VALUES (?, ?, ?, ?, ?, ?)",
+            ("old", "chat", "ou", old_time, "received", None),
+        )
+        conn.execute(
+            "INSERT INTO processed_messages(message_id, chat_id, open_id, created_at, status, error) VALUES (?, ?, ?, ?, ?, ?)",
+            ("new", "chat", "ou", new_time, "received", None),
+        )
+    removed = store.cleanup_processed_messages(7)
+    assert removed == 1
+    with store._connect() as conn:
+        remaining = {row[0] for row in conn.execute("SELECT message_id FROM processed_messages")}
+    assert remaining == {"new"}
 
 
 async def test_bridge_flow(tmpdir: str) -> None:
@@ -298,6 +350,86 @@ def test_load_config_reply_format(tmpdir: str) -> None:
         os.environ.update(old_env)
 
 
+def test_docs_and_templates() -> None:
+    root = Path(__file__).resolve().parents[1]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    agents = (root / "templates" / "AGENTS.md").read_text(encoding="utf-8")
+    env_example = (root / "templates" / "feishu_bridge.env.example").read_text(encoding="utf-8")
+    opencode_example = (root / "templates" / "opencode.remote.example.json").read_text(encoding="utf-8")
+    service_text = "\n".join(
+        [
+            (root / "templates" / "systemd" / "opencode-serve.service").read_text(encoding="utf-8"),
+            (root / "templates" / "systemd" / "rca-feishu-opencode-bridge.service").read_text(encoding="utf-8"),
+        ]
+    )
+    assert "opencode-pty" in readme
+    assert "BRIDGE_HEALTHCHECK_ENABLED" in readme
+    assert "BRIDGE_AUDIT_MAX_BYTES" in readme
+    assert "tail -f .rca/feishu_bridge_audit.jsonl" in readme
+    assert "opencode-pty" in agents
+    assert "tools/run_with_feishu_notify.sh" in agents
+    assert "BRIDGE_REPLY_FORMAT=card" in env_example
+    assert "BRIDGE_PROCESSED_MESSAGE_RETENTION_DAYS=7" in env_example
+    assert "feishu_bridge.env" in opencode_example
+    assert "network-online.target" in service_text
+    assert "Restart=always" in service_text
+    assert "127.0.0.1" in service_text
+    assert "cli_" not in service_text
+    assert "LARK_APP_SECRET" not in service_text
+
+
+async def test_healthcheck(tmpdir: str) -> None:
+    channel = MockChannel()
+    config = make_config(tmpdir)
+    config = bridge.BridgeConfig(**{**config.__dict__, "healthcheck_interval_seconds": 1, "healthcheck_failure_threshold": 2})
+    app = bridge.BridgeApp(config, channel)
+    mock = MockOpenCode(config)
+    mock.mode = "health_fail"
+    app.opencode = mock
+
+    task = asyncio.create_task(app.healthcheck_loop())
+    await app.handle_message(MockMessage("m_health", chat_id="health-chat"))
+    assert channel.cards()
+    sent_after_message = len(channel.sent)
+    await asyncio.sleep(2.4)
+    task.cancel()
+    audit = Path(config.log_path).read_text(encoding="utf-8")
+    assert "healthcheck_failed_threshold" in audit
+    assert len(channel.sent) == sent_after_message
+
+    admin_channel = MockChannel()
+    admin_config = make_config(str(Path(tmpdir) / "admin"))
+    admin_config = bridge.BridgeConfig(
+        **{
+            **admin_config.__dict__,
+            "admin_chat_id": "oc_admin",
+            "healthcheck_interval_seconds": 1,
+            "healthcheck_failure_threshold": 1,
+        }
+    )
+    admin_app = bridge.BridgeApp(admin_config, admin_channel)
+    admin_mock = MockOpenCode(admin_config)
+    admin_mock.mode = "health_fail"
+    admin_app.opencode = admin_mock
+    task = asyncio.create_task(admin_app.healthcheck_loop())
+    await asyncio.sleep(1.3)
+    task.cancel()
+    assert admin_channel.sent
+
+    recovery_config = make_config(str(Path(tmpdir) / "recovery"))
+    recovery_config = bridge.BridgeConfig(**{**recovery_config.__dict__, "healthcheck_interval_seconds": 1})
+    recovery_app = bridge.BridgeApp(recovery_config, MockChannel())
+    recovery_mock = MockOpenCode(recovery_config)
+    recovery_mock.mode = "health_fail"
+    recovery_app.opencode = recovery_mock
+    task = asyncio.create_task(recovery_app.healthcheck_loop())
+    await asyncio.sleep(1.2)
+    recovery_mock.mode = "ok"
+    await asyncio.sleep(1.2)
+    task.cancel()
+    assert "healthcheck_recovered" in Path(recovery_config.log_path).read_text(encoding="utf-8")
+
+
 async def main():
     test_redaction()
     test_card_renderer()
@@ -305,10 +437,14 @@ async def main():
         config = make_config(tmpdir)
         test_part_filtering(config)
         test_session_404_mapping(config)
+        test_audit_rotation(str(Path(tmpdir) / "audit"))
+        test_processed_message_cleanup(str(Path(tmpdir) / "cleanup"))
         await test_bridge_flow(str(Path(tmpdir) / "flow"))
         await test_session_recovery(str(Path(tmpdir) / "session"))
         await test_reply_format_and_fallback(str(Path(tmpdir) / "format"))
         test_load_config_reply_format(str(Path(tmpdir) / "env"))
+        await test_healthcheck(str(Path(tmpdir) / "health"))
+        test_docs_and_templates()
     assert bridge.chunk_text("abcdefghi", 4) == ["abcd", "efgh", "i"]
     print("feishu opencode bridge tests passed")
 

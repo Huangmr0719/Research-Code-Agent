@@ -76,6 +76,19 @@ This repository uses the Research-Code-Agent workflow.
 - The bridge must not decide user intent or implement hard-coded `/status`, `/summary`, or `/run` semantics.
 - Real safety boundaries must come from `opencode.json`, the service user, and filesystem permissions.
 
+## Remote Feishu Entry and opencode-pty
+
+- For long tasks from the remote Feishu entry, prefer `opencode-pty` to manage a background session.
+- Long experiments must still run through `tools/run_with_feishu_notify.sh` inside that session.
+- Do not run naked training commands such as `python train.py` or `bash train.sh` for long experiments.
+- Do not use `opencode-pty` to execute arbitrary user-provided shell commands.
+- Do not use `opencode-pty` to bypass `opencode.json`, service-user, or filesystem permissions.
+- Do not read `feishu_bridge.env`, `.env`, secrets, SSH keys, tokens, or credentials.
+- Do not execute `rm`, broad `chmod`, `scp`, `curl` uploads, or `git push` from the remote Feishu entry.
+- When a Feishu user asks for experiment status, read controlled pty session output, `experiments/summaries/`, and relevant logs, then summarize status, paths, and next steps.
+- If a task may run for a long time, state that it will run in a background session before starting it.
+- Output concise conclusions to the user and redact token/key-like content.
+
 ## Escalation
 
 - If the same bug fails after 2-3 attempts, suggest escalating to CodeX or a stronger review workflow.

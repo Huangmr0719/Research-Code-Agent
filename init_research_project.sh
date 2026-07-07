@@ -118,6 +118,7 @@ main() {
   require_file "$SCRIPT_DIR/templates/README_AGENT_WORKFLOW.md"
   require_file "$SCRIPT_DIR/templates/PAPER_CONTEXT_TEMPLATE.md"
   require_file "$SCRIPT_DIR/templates/feishu_bridge.env.example"
+  require_file "$SCRIPT_DIR/templates/opencode.remote.example.json"
   require_file "$SCRIPT_DIR/templates/systemd/opencode-serve.service"
   require_file "$SCRIPT_DIR/templates/systemd/rca-feishu-opencode-bridge.service"
   require_file "$SCRIPT_DIR/examples/toy_success.sh"
@@ -135,6 +136,7 @@ main() {
   backup_if_exists "$TARGET_DIR/README_AGENT_WORKFLOW.md"
 
   ensure_dir "$TARGET_DIR/papers"
+  ensure_dir "$TARGET_DIR/.rca"
   ensure_dir "$TARGET_DIR/logs"
   ensure_dir "$TARGET_DIR/outputs"
   ensure_dir "$TARGET_DIR/experiments"
@@ -152,6 +154,7 @@ main() {
   copy_file "$SCRIPT_DIR/templates/README_AGENT_WORKFLOW.md" "$TARGET_DIR/README_AGENT_WORKFLOW.md"
   copy_file "$SCRIPT_DIR/templates/PAPER_CONTEXT_TEMPLATE.md" "$TARGET_DIR/templates/PAPER_CONTEXT_TEMPLATE.md"
   copy_file "$SCRIPT_DIR/templates/feishu_bridge.env.example" "$TARGET_DIR/templates/feishu_bridge.env.example"
+  copy_file "$SCRIPT_DIR/templates/opencode.remote.example.json" "$TARGET_DIR/templates/opencode.remote.example.json"
   copy_file "$SCRIPT_DIR/templates/systemd/opencode-serve.service" "$TARGET_DIR/templates/systemd/opencode-serve.service"
   copy_file "$SCRIPT_DIR/templates/systemd/rca-feishu-opencode-bridge.service" "$TARGET_DIR/templates/systemd/rca-feishu-opencode-bridge.service"
   copy_file "$SCRIPT_DIR/examples/toy_success.sh" "$TARGET_DIR/examples/toy_success.sh"
@@ -160,6 +163,7 @@ main() {
   chmod +x "$TARGET_DIR/tools/project_results_adapter.py"
   chmod +x "$TARGET_DIR/examples/toy_success.sh"
   chmod +x "$TARGET_DIR/examples/toy_failed.sh"
+  chmod 700 "$TARGET_DIR/.rca"
 
   log "Done."
 
