@@ -365,8 +365,12 @@ def test_docs_and_templates() -> None:
     assert "opencode-pty" in readme
     assert "BRIDGE_HEALTHCHECK_ENABLED" in readme
     assert "BRIDGE_AUDIT_MAX_BYTES" in readme
+    assert "OpenCode-Native Simplification Strategy" in readme
+    assert "natural language" in readme
     assert "tail -f .rca/feishu_bridge_audit.jsonl" in readme
     assert "opencode-pty" in agents
+    assert "Feishu Remote Natural-Language Workflow" in agents
+    assert "/summary" in agents
     assert "tools/run_with_feishu_notify.sh" in agents
     assert "BRIDGE_REPLY_FORMAT=card" in env_example
     assert "BRIDGE_PROCESSED_MESSAGE_RETENTION_DAYS=7" in env_example
@@ -376,6 +380,20 @@ def test_docs_and_templates() -> None:
     assert "127.0.0.1" in service_text
     assert "cli_" not in service_text
     assert "LARK_APP_SECRET" not in service_text
+    for doc_name in [
+        "opencode-native-simplification.md",
+        "opencode-lark-evaluation.md",
+        "opencode-sdk-evaluation.md",
+    ]:
+        assert (root / "docs" / doc_name).read_text(encoding="utf-8")
+    for command_name in [
+        "experiment-run.md",
+        "experiment-summary.md",
+        "experiment-compare.md",
+        "log-tail.md",
+    ]:
+        command_text = (root / ".opencode" / "commands" / command_name).read_text(encoding="utf-8")
+        assert "Do not ask the user to type this command name." in command_text
 
 
 async def test_healthcheck(tmpdir: str) -> None:

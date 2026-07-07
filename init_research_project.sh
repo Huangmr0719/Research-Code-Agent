@@ -121,6 +121,10 @@ main() {
   require_file "$SCRIPT_DIR/templates/opencode.remote.example.json"
   require_file "$SCRIPT_DIR/templates/systemd/opencode-serve.service"
   require_file "$SCRIPT_DIR/templates/systemd/rca-feishu-opencode-bridge.service"
+  require_file "$SCRIPT_DIR/.opencode/commands/experiment-run.md"
+  require_file "$SCRIPT_DIR/.opencode/commands/experiment-summary.md"
+  require_file "$SCRIPT_DIR/.opencode/commands/experiment-compare.md"
+  require_file "$SCRIPT_DIR/.opencode/commands/log-tail.md"
   require_file "$SCRIPT_DIR/examples/toy_success.sh"
   require_file "$SCRIPT_DIR/examples/toy_failed.sh"
 
@@ -143,6 +147,7 @@ main() {
   ensure_dir "$TARGET_DIR/experiments/summaries"
   ensure_dir "$TARGET_DIR/experiments/runs"
   ensure_dir "$TARGET_DIR/examples"
+  ensure_dir "$TARGET_DIR/.opencode/commands"
 
   copy_generic_tools
   if [[ -f "$TARGET_DIR/tools/project_results_adapter.py" ]]; then
@@ -157,6 +162,10 @@ main() {
   copy_file "$SCRIPT_DIR/templates/opencode.remote.example.json" "$TARGET_DIR/templates/opencode.remote.example.json"
   copy_file "$SCRIPT_DIR/templates/systemd/opencode-serve.service" "$TARGET_DIR/templates/systemd/opencode-serve.service"
   copy_file "$SCRIPT_DIR/templates/systemd/rca-feishu-opencode-bridge.service" "$TARGET_DIR/templates/systemd/rca-feishu-opencode-bridge.service"
+  copy_file "$SCRIPT_DIR/.opencode/commands/experiment-run.md" "$TARGET_DIR/.opencode/commands/experiment-run.md"
+  copy_file "$SCRIPT_DIR/.opencode/commands/experiment-summary.md" "$TARGET_DIR/.opencode/commands/experiment-summary.md"
+  copy_file "$SCRIPT_DIR/.opencode/commands/experiment-compare.md" "$TARGET_DIR/.opencode/commands/experiment-compare.md"
+  copy_file "$SCRIPT_DIR/.opencode/commands/log-tail.md" "$TARGET_DIR/.opencode/commands/log-tail.md"
   copy_file "$SCRIPT_DIR/examples/toy_success.sh" "$TARGET_DIR/examples/toy_success.sh"
   copy_file "$SCRIPT_DIR/examples/toy_failed.sh" "$TARGET_DIR/examples/toy_failed.sh"
 

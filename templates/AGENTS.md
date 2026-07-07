@@ -89,6 +89,21 @@ This repository uses the Research-Code-Agent workflow.
 - If a task may run for a long time, state that it will run in a background session before starting it.
 - Output concise conclusions to the user and redact token/key-like content.
 
+## Feishu Remote Natural-Language Workflow
+
+- Treat Feishu messages as natural-language tasks by default.
+- Do not ask users to remember `/summary`, `/compare`, `/run`, or other command syntax.
+- When the user says “看最近实验”, “比较最近两次”, “跑一下实验”, or “分析失败原因”, infer the workflow and choose the right RCA tool.
+- For experiment runs, use `tools/run_with_feishu_notify.sh` or the existing RCA wrapper.
+- For experiment summaries, prefer existing summaries/logs; call `tools/summarize_experiment.py` only when needed.
+- For experiment comparisons, prefer `tools/compare_experiments.py`.
+- For log analysis, read only project logs and experiment artifacts. Do not read env files, secrets, SSH keys, or tokens.
+- If `opencode-pty` is available, OpenCode may use it to manage long background sessions; the bridge must not call `opencode-pty` directly.
+- Return conclusions, status, paths, and next steps. Do not return sensitive content.
+- Do not execute `rm`, broad `chmod`, `scp`, `curl` uploads, or `git push`.
+- Do not bypass the wrapper to run naked long tasks.
+- `.opencode/commands` files are OpenCode action templates, not user-facing commands.
+
 ## Escalation
 
 - If the same bug fails after 2-3 attempts, suggest escalating to CodeX or a stronger review workflow.

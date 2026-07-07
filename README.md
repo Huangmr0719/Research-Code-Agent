@@ -352,6 +352,27 @@ Long-running experiments must still be launched through:
 ./tools/run_with_feishu_notify.sh --name <experiment_name> -- <command>
 ```
 
+### OpenCode-Native Simplification Strategy
+
+v0.6.1 stops expanding the self-written bridge as the main product direction. The preferred strategy is:
+
+1. Users keep speaking natural language in Feishu.
+2. Users do not need to remember `/summary`, `/compare`, `/run`, or other command syntax.
+3. OpenCode should understand the task and choose the right RCA tool.
+4. RCA tools remain the stable experiment toolbox.
+5. `AGENTS.md`, `.opencode/commands/`, `opencode.json`, and permissions define OpenCode behavior.
+6. Evaluate `opencode-lark` or similar existing Feishu/Lark integrations before adding bridge code.
+7. Keep the Python bridge as a fallback transport.
+8. If the Python bridge must remain, consider an official OpenCode SDK before maintaining handwritten HTTP calls.
+
+The `.opencode/commands/` files are OpenCode action templates. They are not user-facing commands. A Feishu user can still say “看最近实验”, “比较最近两次”, “跑一下 toy_success”, or “分析失败原因”.
+
+See:
+
+- `docs/opencode-native-simplification.md`
+- `docs/opencode-lark-evaluation.md`
+- `docs/opencode-sdk-evaluation.md`
+
 ### Feishu App Setup
 
 Create a Feishu self-built app and enable WebSocket event subscription for local/server development. Subscribe to the message receive event for bot chats, grant bot message send/receive scopes, then reinstall the app into the tenant and target chat. Record:
