@@ -1,6 +1,6 @@
 # opencode-lark Throwaway Feishu Test
 
-Historical evaluation: as of v0.6.5 this route is no longer the primary Feishu entry path. The current primary path is `NeverMore93/opencode-feishu`. This document is retained to record the real cardid/tool-progress issue observed with `opencode-lark`.
+Historical evaluation: this route is no longer recommended. RCA core is not a Feishu bridge; if Feishu access is needed, use `NeverMore93/opencode-feishu`. This document is retained to record the real cardid/tool-progress issue observed with `opencode-lark`.
 
 Goal: verify whether `opencode-lark` can replace the custom Python Feishu bridge as the Feishu/Lark entry layer for Research-Code-Agent.
 

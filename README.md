@@ -1,25 +1,59 @@
 # Research-Code-Agent
 
-面向科研代码项目的轻量级 Agent 辅助实验工具。
+面向 AI 编程助手的科研实验工作流包。
+
+RCA 的核心目标不是做飞书机器人、bridge、多 Agent 平台或 OpenCode 替代品。它只负责让 OpenCode / Codex / Claude Code 进入科研代码项目后，能够安全、规范、可追踪地计划、运行、记录、总结和诊断实验。
+
+第一用户是在服务器上做深度学习实验、论文复现、baseline / ablation / metrics 整理的个人研究者。
 
 当前能力：
 
+- RCA project context: `AGENTS.md`, `RCA.md`, `.rca/profile.json`
+- RCA experiment index: `.rca/experiments.json`
+- RCA experiment launcher: `.rca/scripts/run_experiment.sh`
 - experiment wrapper（带状态捕获）
 - Feishu notification（卡片/文本）
 - log capture
 - summary.json / summary.md
 - summary-based experiment comparison
 - minimal paper context workflow
-- opencode-feishu primary Feishu entry workflow
+- optional opencode-feishu Feishu entry workflow
 - legacy Python Feishu-OpenCode Bridge fallback
 - on-demand OpenCode analysis
 - project_results_adapter（项目级 metrics 适配）
 - toy success / failed / interrupted tests
 - Feishu smoke test
 
-技术栈：bash + Python 标准库。核心实验工具无外部依赖；当前推荐飞书入口是 `NeverMore93/opencode-feishu` OpenCode plugin。自研 Python Feishu bridge 仅作为 legacy fallback，可能需要 Feishu Channel SDK Python（`lark-channel-sdk`）。不存储 Feishu 凭证。
+技术栈：bash + Python 标准库。核心 RCA 工作流无外部依赖。飞书入口是可选外围能力：推荐 `NeverMore93/opencode-feishu`，自研 Python Feishu bridge 仅作为 legacy fallback，可能需要 Feishu Channel SDK Python（`lark-channel-sdk`）。不存储 Feishu 凭证。
 
-当前 RCA 不做：gateway、MCP、Hermes、botmux、Vercel Chat SDK、飞书 CLI、webhook、内网穿透、多平台抽象、Python command router。
+当前 RCA 不做：飞书接入、消息卡片、WebSocket bridge、多机器人编排、Web terminal、Agent runtime、LLM provider 管理、复杂权限系统、重型 MLOps 平台、gateway、MCP、Hermes、botmux、Vercel Chat SDK、飞书 CLI、webhook、内网穿透、多平台抽象、Python command router。
+
+## Recommended Workflow
+
+Use RCA after the AI coding assistant has initialized the project:
+
+```text
+existing research code project
+  -> OpenCode init / Codex project context
+  -> RCA init
+  -> AI reads README, training/eval scripts, configs, data flow, outputs, paper materials
+  -> AI fills RCA.md and .rca/profile.json
+  -> user asks for an experiment in natural language
+  -> RCA proposes an experiment plan
+  -> user confirms
+  -> RCA runs .rca/scripts/run_experiment.sh
+  -> RCA updates .rca/experiments.json
+  -> AI summarizes results in the conversation
+```
+
+Important rules:
+
+- Run OpenCode/project initialization first, then RCA init.
+- RCA init scaffolds context and workflow files; it is not a deep scanner.
+- The AI assistant should fill `RCA.md` and `.rca/profile.json` after reading the actual project.
+- RCA must propose an experiment plan before launching long experiments.
+- Long experiments must go through `.rca/scripts/run_experiment.sh`.
+- `.rca/experiments.json` is the first local source for later comparison and result lookup.
 
 ## Install Once
 
@@ -68,8 +102,17 @@ templates/
     opencode-serve.service
     rca-feishu-opencode-bridge.service
 docs/
+  rca-final-convergence.md
   opencode-feishu-adoption.md
   opencode-feishu-throwaway-test.md
+.rca/
+  README.md
+  profile.json
+  experiments.json
+  scripts/
+    run_experiment.sh
+  runs/
+  plans/
 logs/
 outputs/
 papers/
@@ -80,23 +123,26 @@ examples/
   toy_success.sh
   toy_failed.sh
 AGENTS.md
+RCA.md
 README_AGENT_WORKFLOW.md
 ```
 
-If `tools/`, `AGENTS.md`, `README_AGENT_WORKFLOW.md`, or the toy example files already exist, existing paths are moved to `.bak.<timestamp>` before new files are copied.
+If `AGENTS.md` already exists, init appends a small `Research-Code-Agent` section instead of replacing the file. If `RCA.md`, `.rca/profile.json`, or `.rca/experiments.json` already exist, init leaves them untouched. Generic copied tools and docs still use the existing `.bak.<timestamp>` backup behavior.
 
 ## Recommended Order After Init
 
 ```bash
-# 1. Initialize
+# 1. Initialize after your AI coding assistant has initialized the project
 bash init_research_project.sh
 
-# 2. Verify Feishu notification
-./tools/test_feishu_notify.sh
+# 2. Ask the AI assistant to read RCA.md and fill project-specific context
+#    from README, train/eval scripts, configs, outputs, and paper materials.
 
-# 3. Run toy tests
-./tools/run_with_feishu_notify.sh --name toy_success --note "toy success notification check" -- bash examples/toy_success.sh
-./tools/run_with_feishu_notify.sh --name toy_failed -- bash examples/toy_failed.sh
+# 3. Run toy RCA recording test
+./.rca/scripts/run_experiment.sh --name toy_success --note "跑一次 toy success，验证 RCA 记录流程" -- bash examples/toy_success.sh
+
+# 4. Optional Feishu notification check
+./tools/test_feishu_notify.sh
 ```
 
 ## Minimal Paper-Aware Workflow
@@ -138,7 +184,7 @@ bash research-code-agent/init_research_project.sh
 rm -rf research-code-agent research-code-agent.tar.gz
 ```
 
-The baseline project should only keep the initialized files such as `tools/`, `templates/`, `AGENTS.md`, `README_AGENT_WORKFLOW.md`, and ignore rules. Do not leave a nested `Research-Code-Agent/.git` in the baseline project.
+The baseline project should only keep the initialized workflow files such as `AGENTS.md`, `RCA.md`, `.rca/`, `tools/`, `templates/`, `README_AGENT_WORKFLOW.md`, and ignore rules. Do not leave a nested `Research-Code-Agent/.git` in the baseline project.
 
 Current development repository may still be named `research-agent-template`. The recommended future GitHub repository name is `Research-Code-Agent`; release package directory name should be `research-code-agent`.
 
@@ -150,7 +196,20 @@ Original command:
 python train.py --config configs/default.yaml
 ```
 
-Use:
+Use the RCA launcher:
+
+```bash
+./.rca/scripts/run_experiment.sh \
+  --name baseline_default \
+  --note "跑一次默认 baseline，作为后续实验对照" \
+  --task-type baseline \
+  --config configs/default.yaml \
+  -- python train.py --config configs/default.yaml
+```
+
+The launcher preserves the existing notification/summary wrapper and also updates `.rca/experiments.json`.
+
+Lower-level wrapper, kept for compatibility:
 
 ```bash
 ./tools/run_with_feishu_notify.sh --name baseline_default -- python train.py --config configs/default.yaml
@@ -324,9 +383,9 @@ Agent 分析不可用。请查看 facts 和 log tail。
 
 Feishu cards show `实验备注`, `运行概览`, `核心指标`, `Agent 分析`, `日志摘要`, and `运行命令`.
 
-## Primary Feishu Entry: opencode-feishu
+## Optional Feishu Entry: opencode-feishu
 
-v0.6.5 switches the primary Feishu remote entry route to `NeverMore93/opencode-feishu`:
+Feishu is an optional remote entry layer, not the RCA product core. If you need Feishu access, the recommended route is `NeverMore93/opencode-feishu`:
 
 ```text
 Feishu
@@ -393,21 +452,22 @@ Long-running experiments must still be launched through:
 
 ### OpenCode-Native Simplification Strategy
 
-v0.6.5 stops treating the self-written bridge, `opencode-lark`, or OpenCode SDK as the main product direction. The preferred strategy is:
+The preferred strategy is:
 
 1. Users keep speaking natural language in Feishu.
 2. Users do not need to remember `/summary`, `/compare`, `/run`, or other command syntax.
 3. OpenCode should understand the task and choose the right RCA tool.
 4. RCA tools remain the stable experiment toolbox.
 5. `AGENTS.md`, `.opencode/commands/`, `opencode.json`, and permissions define OpenCode behavior.
-6. Use `NeverMore93/opencode-feishu` as the primary Feishu entry.
+6. Use RCA core files first: `AGENTS.md`, `RCA.md`, `.rca/profile.json`, `.rca/experiments.json`, and `.rca/scripts/run_experiment.sh`.
 7. Keep the Python bridge as a legacy fallback transport.
-8. Treat `opencode-lark` as historical evaluation and OpenCode SDK as a backup option.
+8. Treat Feishu integrations, `opencode-lark`, and OpenCode SDK work as optional outer layers.
 
 The `.opencode/commands/` files are OpenCode action templates. They are not user-facing commands. A Feishu user can still say “看最近实验”, “比较最近两次”, “跑一下 toy_success”, or “分析失败原因”.
 
 See:
 
+- `docs/rca-final-convergence.md`
 - `docs/opencode-native-simplification.md`
 - `docs/opencode-native-smoke-test.md`
 - `docs/opencode-feishu-adoption.md`

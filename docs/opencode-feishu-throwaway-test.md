@@ -1,6 +1,6 @@
 # opencode-feishu Throwaway Test
 
-Status: test plan for the v0.6.5 primary Feishu entry route.
+Status: test plan for the optional `opencode-feishu` Feishu entry route.
 
 Do not record real App ID or App Secret in this file.
 

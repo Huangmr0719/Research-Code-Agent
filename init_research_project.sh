@@ -30,6 +30,37 @@ copy_file() {
   log "Created ${dst#$TARGET_DIR/}"
 }
 
+copy_file_if_missing() {
+  local src="$1"
+  local dst="$2"
+  if [[ -e "$dst" ]]; then
+    log "Skipped ${dst#$TARGET_DIR/} (already exists)"
+    return
+  fi
+  mkdir -p "$(dirname "$dst")"
+  cp "$src" "$dst"
+  log "Created ${dst#$TARGET_DIR/}"
+}
+
+install_agents_file() {
+  local section="$SCRIPT_DIR/templates/AGENTS_RCA_SECTION.md"
+  local dst="$TARGET_DIR/AGENTS.md"
+  if [[ ! -f "$dst" ]]; then
+    cp "$section" "$dst"
+    log "Created AGENTS.md"
+    return
+  fi
+  if grep -q "## Research-Code-Agent" "$dst"; then
+    log "Skipped AGENTS.md (Research-Code-Agent section already exists)"
+    return
+  fi
+  {
+    printf '\n'
+    cat "$section"
+  } >> "$dst"
+  log "Appended Research-Code-Agent section to AGENTS.md"
+}
+
 ensure_dir() {
   local dir="$1"
   mkdir -p "$dir"
@@ -115,8 +146,14 @@ main() {
   require_file "$SCRIPT_DIR/tools/feishu_card_renderer.py"
   require_file "$SCRIPT_DIR/tools/test_feishu_opencode_bridge.py"
   require_file "$SCRIPT_DIR/templates/AGENTS.md"
+  require_file "$SCRIPT_DIR/templates/AGENTS_RCA_SECTION.md"
+  require_file "$SCRIPT_DIR/templates/RCA.md"
   require_file "$SCRIPT_DIR/templates/README_AGENT_WORKFLOW.md"
   require_file "$SCRIPT_DIR/templates/PAPER_CONTEXT_TEMPLATE.md"
+  require_file "$SCRIPT_DIR/templates/rca/README.md"
+  require_file "$SCRIPT_DIR/templates/rca/profile.json"
+  require_file "$SCRIPT_DIR/templates/rca/experiments.json"
+  require_file "$SCRIPT_DIR/templates/rca/scripts/run_experiment.sh"
   require_file "$SCRIPT_DIR/templates/feishu_bridge.env.example"
   require_file "$SCRIPT_DIR/templates/opencode-feishu.plugin.example.json"
   require_file "$SCRIPT_DIR/templates/feishu.plugin.example.json"
@@ -125,6 +162,7 @@ main() {
   require_file "$SCRIPT_DIR/templates/systemd/rca-feishu-opencode-bridge.service"
   require_file "$SCRIPT_DIR/docs/opencode-feishu-adoption.md"
   require_file "$SCRIPT_DIR/docs/opencode-feishu-throwaway-test.md"
+  require_file "$SCRIPT_DIR/docs/rca-final-convergence.md"
   require_file "$SCRIPT_DIR/.opencode/commands/experiment-run.md"
   require_file "$SCRIPT_DIR/.opencode/commands/experiment-summary.md"
   require_file "$SCRIPT_DIR/.opencode/commands/experiment-compare.md"
@@ -140,11 +178,13 @@ main() {
     exit 0
   fi
 
-  backup_if_exists "$TARGET_DIR/AGENTS.md"
   backup_if_exists "$TARGET_DIR/README_AGENT_WORKFLOW.md"
 
   ensure_dir "$TARGET_DIR/papers"
   ensure_dir "$TARGET_DIR/.rca"
+  ensure_dir "$TARGET_DIR/.rca/scripts"
+  ensure_dir "$TARGET_DIR/.rca/runs"
+  ensure_dir "$TARGET_DIR/.rca/plans"
   ensure_dir "$TARGET_DIR/logs"
   ensure_dir "$TARGET_DIR/outputs"
   ensure_dir "$TARGET_DIR/experiments"
@@ -160,7 +200,12 @@ main() {
   else
     copy_file "$SCRIPT_DIR/tools/project_results_adapter.py" "$TARGET_DIR/tools/project_results_adapter.py"
   fi
-  copy_file "$SCRIPT_DIR/templates/AGENTS.md" "$TARGET_DIR/AGENTS.md"
+  install_agents_file
+  copy_file_if_missing "$SCRIPT_DIR/templates/RCA.md" "$TARGET_DIR/RCA.md"
+  copy_file_if_missing "$SCRIPT_DIR/templates/rca/README.md" "$TARGET_DIR/.rca/README.md"
+  copy_file_if_missing "$SCRIPT_DIR/templates/rca/profile.json" "$TARGET_DIR/.rca/profile.json"
+  copy_file_if_missing "$SCRIPT_DIR/templates/rca/experiments.json" "$TARGET_DIR/.rca/experiments.json"
+  copy_file_if_missing "$SCRIPT_DIR/templates/rca/scripts/run_experiment.sh" "$TARGET_DIR/.rca/scripts/run_experiment.sh"
   copy_file "$SCRIPT_DIR/templates/README_AGENT_WORKFLOW.md" "$TARGET_DIR/README_AGENT_WORKFLOW.md"
   copy_file "$SCRIPT_DIR/templates/PAPER_CONTEXT_TEMPLATE.md" "$TARGET_DIR/templates/PAPER_CONTEXT_TEMPLATE.md"
   copy_file "$SCRIPT_DIR/templates/feishu_bridge.env.example" "$TARGET_DIR/templates/feishu_bridge.env.example"
@@ -171,6 +216,7 @@ main() {
   copy_file "$SCRIPT_DIR/templates/systemd/rca-feishu-opencode-bridge.service" "$TARGET_DIR/templates/systemd/rca-feishu-opencode-bridge.service"
   copy_file "$SCRIPT_DIR/docs/opencode-feishu-adoption.md" "$TARGET_DIR/docs/opencode-feishu-adoption.md"
   copy_file "$SCRIPT_DIR/docs/opencode-feishu-throwaway-test.md" "$TARGET_DIR/docs/opencode-feishu-throwaway-test.md"
+  copy_file "$SCRIPT_DIR/docs/rca-final-convergence.md" "$TARGET_DIR/docs/rca-final-convergence.md"
   copy_file "$SCRIPT_DIR/.opencode/commands/experiment-run.md" "$TARGET_DIR/.opencode/commands/experiment-run.md"
   copy_file "$SCRIPT_DIR/.opencode/commands/experiment-summary.md" "$TARGET_DIR/.opencode/commands/experiment-summary.md"
   copy_file "$SCRIPT_DIR/.opencode/commands/experiment-compare.md" "$TARGET_DIR/.opencode/commands/experiment-compare.md"
@@ -179,6 +225,7 @@ main() {
   copy_file "$SCRIPT_DIR/examples/toy_failed.sh" "$TARGET_DIR/examples/toy_failed.sh"
 
   chmod +x "$TARGET_DIR/tools/project_results_adapter.py"
+  chmod +x "$TARGET_DIR/.rca/scripts/run_experiment.sh"
   chmod +x "$TARGET_DIR/examples/toy_success.sh"
   chmod +x "$TARGET_DIR/examples/toy_failed.sh"
   chmod 700 "$TARGET_DIR/.rca"
@@ -191,7 +238,12 @@ main() {
   else
     cat <<'EOF'
 
-Next step: run ./tools/test_feishu_notify.sh to verify Feishu notification.
+Next step: ask your AI coding assistant to read RCA.md and fill the project profile.
+
+Primary RCA experiment launcher:
+  ./.rca/scripts/run_experiment.sh --name toy_success --note "跑一次 toy success，验证 RCA 记录流程" -- bash examples/toy_success.sh
+
+Optional: run ./tools/test_feishu_notify.sh to verify Feishu notification.
 
 Optional paper context:
   1. Put the paper PDF under papers/
@@ -199,6 +251,7 @@ Optional paper context:
   3. Ask your Agent to fill PAPER_CONTEXT.md based on the paper, README, and code.
 
 Toy test commands:
+  ./.rca/scripts/run_experiment.sh --name toy_success --note "跑一次 toy success，验证 RCA 记录流程" -- bash examples/toy_success.sh
   ./tools/run_with_feishu_notify.sh --name toy_success --note "toy success notification check" -- bash examples/toy_success.sh
   ./tools/run_with_feishu_notify.sh --name toy_failed -- bash examples/toy_failed.sh
   ./tools/run_with_feishu_notify.sh --name toy_interrupt -- bash -c "sleep 60"

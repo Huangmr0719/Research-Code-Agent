@@ -1,6 +1,6 @@
 # OpenCode Lark/Feishu Integration Evaluation
 
-Historical evaluation: as of v0.6.5 this is no longer the primary Feishu entry route. The current primary route is `NeverMore93/opencode-feishu`; this document is retained as background for why `opencode-lark` was not adopted.
+Historical evaluation: Feishu entry is now optional outer-layer infrastructure, not RCA core. If Feishu is needed, the recommended route is `NeverMore93/opencode-feishu`; this document is retained as background for why `opencode-lark` was not adopted.
 
 Goal: decide whether the community package `opencode-lark` can replace further maintenance of the custom Python Feishu bridge.
 
@@ -14,9 +14,9 @@ Evaluation date: 2026-07-07
 
 It is **not the current main route**. The main gaps for Research-Code-Agent were open_id allowlist enforcement, explicit audit/redaction behavior, narrower permission/card scope, systemd deployment expectations, and a real Feishu card/tool-progress compatibility issue.
 
-Do not expand the custom Python bridge because of this document. Use `opencode-feishu` as the primary Feishu entry route and keep the Python bridge as legacy fallback.
+Do not expand the custom Python bridge because of this document. Use RCA core workflow first; if Feishu is needed, use `opencode-feishu` and keep the Python bridge as legacy fallback.
 
-v0.6.5 update: Research-Code-Agent is switching the primary Feishu entry route to `NeverMore93/opencode-feishu`. `opencode-lark` remains a historical evaluation item.
+v0.6.5+ update: Research-Code-Agent core is not a Feishu bridge. `opencode-feishu` is the recommended optional Feishu route, and `opencode-lark` remains a historical evaluation item.
 
 v0.6.4 update: the local throwaway test verified installation, `opencode serve`, OpenCode health, and `opencode-lark` startup through the OpenCode/SSE/database phases. A later real Feishu supplemental test confirmed that `opencode-lark` can receive real Feishu messages, connect to local OpenCode, start an OpenCode session, generate a prompt response for "帮我总结最近一次实验结果", and send a final streaming card reply. The new blocker is `opencode-lark`'s tool-start/tool-progress card path: Feishu returned `230099 - Failed to create card content`, nested `ErrCode: 11310; ErrMsg: cardid is invalid`, followed by `card start for tool failed: Error: sendMessage returned no message_id`. See `docs/opencode-lark-throwaway-test.md`.
 

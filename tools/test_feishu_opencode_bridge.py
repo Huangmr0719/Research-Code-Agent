@@ -355,6 +355,12 @@ def test_docs_and_templates() -> None:
     root = Path(__file__).resolve().parents[1]
     readme = (root / "README.md").read_text(encoding="utf-8")
     agents = (root / "templates" / "AGENTS.md").read_text(encoding="utf-8")
+    agents_section = (root / "templates" / "AGENTS_RCA_SECTION.md").read_text(encoding="utf-8")
+    rca_context = (root / "templates" / "RCA.md").read_text(encoding="utf-8")
+    rca_readme = (root / "templates" / "rca" / "README.md").read_text(encoding="utf-8")
+    rca_profile = (root / "templates" / "rca" / "profile.json").read_text(encoding="utf-8")
+    rca_experiments = (root / "templates" / "rca" / "experiments.json").read_text(encoding="utf-8")
+    rca_runner = (root / "templates" / "rca" / "scripts" / "run_experiment.sh").read_text(encoding="utf-8")
     env_example = (root / "templates" / "feishu_bridge.env.example").read_text(encoding="utf-8")
     opencode_example = (root / "templates" / "opencode.remote.example.json").read_text(encoding="utf-8")
     opencode_feishu_plugin = (root / "templates" / "opencode-feishu.plugin.example.json").read_text(encoding="utf-8")
@@ -371,9 +377,22 @@ def test_docs_and_templates() -> None:
     assert "OpenCode-Native Simplification Strategy" in readme
     assert "natural language" in readme
     assert "tail -f .rca/feishu_bridge_audit.jsonl" in readme
+    assert "RCA project context" in readme
+    assert "面向 AI 编程助手的科研实验工作流包" in readme
+    assert ".rca/scripts/run_experiment.sh" in readme
+    assert ".rca/experiments.json" in readme
     assert "opencode-pty" in agents
+    assert "Core RCA Workflow" in agents
+    assert ".rca/scripts/run_experiment.sh" in agents
+    assert "Research-Code-Agent" in agents_section
+    assert "wait for user confirmation" in agents_section
+    assert "Experiment Planning Rules" in rca_context
+    assert "experiments.json" in rca_readme
+    assert '"schema_version": 1' in rca_profile
+    assert '"experiments": []' in rca_experiments
+    assert "RCA run recorded" in rca_runner
     assert "Feishu Remote Natural-Language Workflow" in agents
-    assert "Do not inspect `.rca/`" in agents
+    assert "allowed and expected to read `.rca/profile.json`" in agents
     assert "/summary" in agents
     assert "tools/run_with_feishu_notify.sh" in agents
     assert "BRIDGE_REPLY_FORMAT=card" in env_example
@@ -391,6 +410,7 @@ def test_docs_and_templates() -> None:
     for doc_name in [
         "opencode-native-simplification.md",
         "opencode-native-smoke-test.md",
+        "rca-final-convergence.md",
         "opencode-feishu-adoption.md",
         "opencode-feishu-throwaway-test.md",
         "opencode-lark-evaluation.md",
@@ -398,8 +418,11 @@ def test_docs_and_templates() -> None:
         "opencode-sdk-evaluation.md",
     ]:
         assert (root / "docs" / doc_name).read_text(encoding="utf-8")
-    assert "opencode-feishu primary Feishu entry workflow" in readme
+    assert "optional opencode-feishu Feishu entry workflow" in readme
     assert "legacy Python Feishu-OpenCode Bridge fallback" in readme
+    convergence = (root / "docs" / "rca-final-convergence.md").read_text(encoding="utf-8")
+    assert "RCA is not a Feishu bot" in convergence
+    assert ".rca/scripts/run_experiment.sh" in convergence
     adoption = (root / "docs" / "opencode-feishu-adoption.md").read_text(encoding="utf-8")
     assert "NeverMore93/opencode-feishu" in adoption
     assert "Python bridge remains available as a fallback" in adoption

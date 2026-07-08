@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "project_name": "",
+  "project_type": "",
+  "research_task": "",
+  "datasets": [],
+  "metrics": [],
+  "training_entrypoints": [],
+  "evaluation_entrypoints": [],
+  "config_paths": [],
+  "output_paths": [],
+  "checkpoint_paths": [],
+  "metric_sources": [],
+  "notes": []
+}

@@ -1,8 +1,8 @@
 # opencode-feishu Adoption
 
-Status: v0.6.5 primary Feishu entry route.
+Status: optional Feishu entry route.
 
-Research-Code-Agent now recommends `NeverMore93/opencode-feishu` as the primary Feishu/Lark entry layer. The self-written Python Feishu bridge remains in this repository as a legacy fallback, but it should not keep growing into a product surface.
+Research-Code-Agent core is `AGENTS.md`, `RCA.md`, `.rca/profile.json`, `.rca/experiments.json`, and `.rca/scripts/run_experiment.sh`. If a Feishu/Lark remote entry is needed, RCA recommends `NeverMore93/opencode-feishu` as the optional outer layer. The self-written Python Feishu bridge remains in this repository as a legacy fallback, but it should not keep growing into a product surface.
 
 ## Why opencode-feishu
 
@@ -14,11 +14,11 @@ Research-Code-Agent now recommends `NeverMore93/opencode-feishu` as the primary 
 - `.opencode/commands` remain action templates for OpenCode, not user-facing commands.
 - Long experiments still go through `tools/run_with_feishu_notify.sh`.
 
-Compared with the evaluated `opencode-lark` service route, `opencode-feishu` is closer to the OpenCode-native model because it is loaded by OpenCode itself and does not require a separate `opencode serve` bridge process as the primary path.
+Compared with the evaluated `opencode-lark` service route, `opencode-feishu` is closer to the OpenCode-native model because it is loaded by OpenCode itself and does not require a separate `opencode serve` bridge process.
 
 ## What It Replaces
 
-It replaces the primary Feishu entry role of the custom Python bridge:
+It replaces the Feishu entry role of the custom Python bridge when Feishu access is required:
 
 ```text
 Feishu
