@@ -1,0 +1,222 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_DIR="$(pwd)"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  rca init [--force]
+  rca check
+
+Commands:
+  init    Mechanically initialize RCA.md and .rca/ in the current project
+  check   Validate RCA workspace files and ledger consistency
+
+Options:
+  --force Overwrite RCA.md, .rca/profile.json, .rca/experiments.json, and .rca/README.md
+EOF
+}
+
+log() {
+  printf '[rca] %s\n' "$*"
+}
+
+require_file() {
+  local path="$1"
+  if [[ ! -f "$path" ]]; then
+    printf '[rca] missing template: %s\n' "$path" >&2
+    exit 1
+  fi
+}
+
+copy_if_missing() {
+  local src="$1"
+  local dst="$2"
+  local force="$3"
+  if [[ -e "$dst" && "$force" != "1" ]]; then
+    log "kept existing ${dst#$PROJECT_DIR/}"
+    return
+  fi
+  mkdir -p "$(dirname "$dst")"
+  cp "$src" "$dst"
+  log "wrote ${dst#$PROJECT_DIR/}"
+}
+
+cmd_init() {
+  local force=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --force)
+        force=1
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        printf '[rca] unknown init option: %s\n' "$1" >&2
+        exit 2
+        ;;
+    esac
+  done
+
+  require_file "$REPO_DIR/templates/RCA.md"
+  require_file "$REPO_DIR/templates/rca/README.md"
+  require_file "$REPO_DIR/templates/rca/profile.template.json"
+  require_file "$REPO_DIR/templates/rca/experiments.template.json"
+  require_file "$REPO_DIR/templates/rca/run_experiment.sh"
+
+  mkdir -p "$PROJECT_DIR/.rca/scripts" "$PROJECT_DIR/.rca/runs" "$PROJECT_DIR/.rca/plans" "$PROJECT_DIR/.rca/tmp"
+  copy_if_missing "$REPO_DIR/templates/RCA.md" "$PROJECT_DIR/RCA.md" "$force"
+  copy_if_missing "$REPO_DIR/templates/rca/README.md" "$PROJECT_DIR/.rca/README.md" "$force"
+  copy_if_missing "$REPO_DIR/templates/rca/profile.template.json" "$PROJECT_DIR/.rca/profile.json" "$force"
+  copy_if_missing "$REPO_DIR/templates/rca/experiments.template.json" "$PROJECT_DIR/.rca/experiments.json" "$force"
+  cp "$REPO_DIR/templates/rca/run_experiment.sh" "$PROJECT_DIR/.rca/scripts/run_experiment.sh"
+  chmod +x "$PROJECT_DIR/.rca/scripts/run_experiment.sh"
+  chmod 700 "$PROJECT_DIR/.rca" 2>/dev/null || true
+
+  log "initialized RCA workspace in $PROJECT_DIR"
+  cat <<'EOF'
+
+Next step in OpenCode:
+  帮这个项目做 RCA 深度初始化
+
+OpenCode should read README, train/eval scripts, configs, data flow, outputs,
+paper/reproduction materials, then complete RCA.md and .rca/profile.json.
+Do not run experiments until the project understanding and experiment plan are confirmed.
+EOF
+}
+
+cmd_check() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf '[rca] FAIL python3 is required for rca check\n' >&2
+    exit 1
+  fi
+
+  python3 - "$PROJECT_DIR" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+errors = []
+warnings = []
+
+def rel(path: Path) -> str:
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
+
+def require_file(path: Path) -> None:
+    if not path.is_file():
+        errors.append(f"missing file: {rel(path)}")
+
+def require_dir(path: Path) -> None:
+    if not path.is_dir():
+        errors.append(f"missing directory: {rel(path)}")
+
+require_file(root / "RCA.md")
+require_file(root / ".rca" / "README.md")
+require_file(root / ".rca" / "profile.json")
+require_file(root / ".rca" / "experiments.json")
+require_file(root / ".rca" / "scripts" / "run_experiment.sh")
+require_dir(root / ".rca" / "runs")
+require_dir(root / ".rca" / "plans")
+
+runner = root / ".rca" / "scripts" / "run_experiment.sh"
+if runner.exists() and not runner.stat().st_mode & 0o111:
+    errors.append("not executable: .rca/scripts/run_experiment.sh")
+
+profile = None
+profile_path = root / ".rca" / "profile.json"
+if profile_path.exists():
+    try:
+        profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        errors.append(f"invalid JSON: .rca/profile.json ({exc})")
+    else:
+        if not isinstance(profile, dict):
+            errors.append(".rca/profile.json must be a JSON object")
+
+ledger = None
+ledger_path = root / ".rca" / "experiments.json"
+if ledger_path.exists():
+    try:
+        ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        errors.append(f"invalid JSON: .rca/experiments.json ({exc})")
+    else:
+        if not isinstance(ledger, list):
+            errors.append(".rca/experiments.json top level must be an array")
+
+ledger_ids = set()
+if isinstance(ledger, list):
+    for idx, item in enumerate(ledger):
+        if not isinstance(item, dict):
+            warnings.append(f"experiments[{idx}] is not an object")
+            continue
+        run_id = item.get("run_id")
+        if not run_id:
+            warnings.append(f"experiments[{idx}] missing run_id")
+            continue
+        ledger_ids.add(run_id)
+        artifacts = item.get("artifacts") if isinstance(item.get("artifacts"), dict) else {}
+        summary_value = artifacts.get("summary") or f".rca/runs/{run_id}/summary.json"
+        summary_path = Path(summary_value)
+        if not summary_path.is_absolute():
+            summary_path = root / summary_path
+        if not summary_path.is_file():
+            warnings.append(f"ledger run_id {run_id} summary missing: {rel(summary_path)}")
+
+runs_dir = root / ".rca" / "runs"
+if runs_dir.is_dir():
+    for run_dir in sorted(path for path in runs_dir.iterdir() if path.is_dir()):
+        if run_dir.name not in ledger_ids:
+            warnings.append(f"run directory not in ledger: {rel(run_dir)}")
+        if not (run_dir / "summary.json").is_file():
+            warnings.append(f"run summary missing: {rel(run_dir / 'summary.json')}")
+
+for msg in errors:
+    print(f"FAIL {msg}")
+for msg in warnings:
+    print(f"WARN {msg}")
+if errors:
+    raise SystemExit(1)
+if warnings:
+    print("WARN RCA workspace has warnings")
+else:
+    print("PASS RCA workspace is consistent")
+PY
+}
+
+main() {
+  if [[ $# -lt 1 ]]; then
+    usage
+    exit 2
+  fi
+  local cmd="$1"
+  shift
+  case "$cmd" in
+    init)
+      cmd_init "$@"
+      ;;
+    check)
+      cmd_check "$@"
+      ;;
+    -h|--help)
+      usage
+      ;;
+    *)
+      printf '[rca] unknown command: %s\n' "$cmd" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+}
+
+main "$@"

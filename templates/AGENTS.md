@@ -5,12 +5,13 @@ This repository uses the Research-Code-Agent workflow.
 ## Core RCA Workflow
 
 - RCA is a research experiment workflow package for AI coding assistants, not a Feishu bot, bridge, agent runtime, or MLOps platform.
+- The global OpenCode Skill `rca` is the source of general RCA behavior rules; this project stores local RCA context in `RCA.md` and `.rca/`.
 - For research experiment tasks, read `RCA.md` first.
 - Use `.rca/profile.json` for structured project profile when available.
 - Use `.rca/experiments.json` as the first source for experiment history, comparison, and result lookup.
 - Before running a long experiment, propose a short experiment plan and wait for user confirmation.
 - Long experiments must run through `.rca/scripts/run_experiment.sh --confirm` after user confirmation.
-- `.rca/scripts/run_experiment.sh` serializes record updates with `.rca/run.lock` and writes summary/index JSON files atomically.
+- `.rca/scripts/run_experiment.sh` serializes ledger updates and writes summary/index JSON files atomically.
 - The lower-level `tools/run_with_feishu_notify.sh` wrapper may be used by `.rca/scripts/run_experiment.sh`, but it is not the preferred user-facing entrypoint.
 - Each experiment must preserve a per-run summary under `.rca/runs/<run_id>/summary.json` and update `.rca/experiments.json`.
 - Do not modify core training, model, dataset, evaluation, or config code unless the user explicitly confirms the patch.

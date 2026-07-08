@@ -145,15 +145,18 @@ main() {
   require_file "$SCRIPT_DIR/tools/feishu_opencode_bridge.py"
   require_file "$SCRIPT_DIR/tools/feishu_card_renderer.py"
   require_file "$SCRIPT_DIR/tools/test_feishu_opencode_bridge.py"
+  require_file "$SCRIPT_DIR/bin/rca"
+  require_file "$SCRIPT_DIR/skills/rca/SKILL.md"
   require_file "$SCRIPT_DIR/templates/AGENTS.md"
   require_file "$SCRIPT_DIR/templates/AGENTS_RCA_SECTION.md"
   require_file "$SCRIPT_DIR/templates/RCA.md"
   require_file "$SCRIPT_DIR/templates/README_AGENT_WORKFLOW.md"
   require_file "$SCRIPT_DIR/templates/PAPER_CONTEXT_TEMPLATE.md"
   require_file "$SCRIPT_DIR/templates/rca/README.md"
-  require_file "$SCRIPT_DIR/templates/rca/profile.json"
-  require_file "$SCRIPT_DIR/templates/rca/experiments.json"
-  require_file "$SCRIPT_DIR/templates/rca/scripts/run_experiment.sh"
+  require_file "$SCRIPT_DIR/templates/rca/profile.template.json"
+  require_file "$SCRIPT_DIR/templates/rca/experiments.template.json"
+  require_file "$SCRIPT_DIR/templates/rca/RCA_INIT_PROMPT.md"
+  require_file "$SCRIPT_DIR/templates/rca/run_experiment.sh"
   require_file "$SCRIPT_DIR/templates/feishu_bridge.env.example"
   require_file "$SCRIPT_DIR/templates/opencode-feishu.plugin.example.json"
   require_file "$SCRIPT_DIR/templates/feishu.plugin.example.json"
@@ -191,6 +194,7 @@ main() {
   ensure_dir "$TARGET_DIR/experiments/summaries"
   ensure_dir "$TARGET_DIR/experiments/runs"
   ensure_dir "$TARGET_DIR/examples"
+  ensure_dir "$TARGET_DIR/bin"
   ensure_dir "$TARGET_DIR/docs"
   ensure_dir "$TARGET_DIR/.opencode/commands"
 
@@ -200,12 +204,21 @@ main() {
   else
     copy_file "$SCRIPT_DIR/tools/project_results_adapter.py" "$TARGET_DIR/tools/project_results_adapter.py"
   fi
+  copy_file "$SCRIPT_DIR/bin/rca" "$TARGET_DIR/bin/rca"
+  chmod +x "$TARGET_DIR/bin/rca"
+  copy_file "$SCRIPT_DIR/templates/RCA.md" "$TARGET_DIR/templates/RCA.md"
+  copy_file "$SCRIPT_DIR/templates/rca/README.md" "$TARGET_DIR/templates/rca/README.md"
+  copy_file "$SCRIPT_DIR/templates/rca/profile.template.json" "$TARGET_DIR/templates/rca/profile.template.json"
+  copy_file "$SCRIPT_DIR/templates/rca/experiments.template.json" "$TARGET_DIR/templates/rca/experiments.template.json"
+  copy_file "$SCRIPT_DIR/templates/rca/RCA_INIT_PROMPT.md" "$TARGET_DIR/templates/rca/RCA_INIT_PROMPT.md"
+  copy_file "$SCRIPT_DIR/templates/rca/run_experiment.sh" "$TARGET_DIR/templates/rca/run_experiment.sh"
   install_agents_file
   copy_file_if_missing "$SCRIPT_DIR/templates/RCA.md" "$TARGET_DIR/RCA.md"
   copy_file_if_missing "$SCRIPT_DIR/templates/rca/README.md" "$TARGET_DIR/.rca/README.md"
-  copy_file_if_missing "$SCRIPT_DIR/templates/rca/profile.json" "$TARGET_DIR/.rca/profile.json"
-  copy_file_if_missing "$SCRIPT_DIR/templates/rca/experiments.json" "$TARGET_DIR/.rca/experiments.json"
-  copy_file_if_missing "$SCRIPT_DIR/templates/rca/scripts/run_experiment.sh" "$TARGET_DIR/.rca/scripts/run_experiment.sh"
+  copy_file_if_missing "$SCRIPT_DIR/templates/rca/profile.template.json" "$TARGET_DIR/.rca/profile.json"
+  copy_file_if_missing "$SCRIPT_DIR/templates/rca/experiments.template.json" "$TARGET_DIR/.rca/experiments.json"
+  copy_file_if_missing "$SCRIPT_DIR/templates/rca/RCA_INIT_PROMPT.md" "$TARGET_DIR/.rca/RCA_INIT_PROMPT.md"
+  copy_file_if_missing "$SCRIPT_DIR/templates/rca/run_experiment.sh" "$TARGET_DIR/.rca/scripts/run_experiment.sh"
   copy_file "$SCRIPT_DIR/templates/README_AGENT_WORKFLOW.md" "$TARGET_DIR/README_AGENT_WORKFLOW.md"
   copy_file "$SCRIPT_DIR/templates/PAPER_CONTEXT_TEMPLATE.md" "$TARGET_DIR/templates/PAPER_CONTEXT_TEMPLATE.md"
   copy_file "$SCRIPT_DIR/templates/feishu_bridge.env.example" "$TARGET_DIR/templates/feishu_bridge.env.example"
@@ -239,6 +252,10 @@ main() {
     cat <<'EOF'
 
 Next step: ask your AI coding assistant to read RCA.md and fill the project profile.
+
+RCA commands:
+  ./bin/rca init
+  ./bin/rca check
 
 Primary RCA experiment launcher:
   ./.rca/scripts/run_experiment.sh --name toy_success --note "跑一次 toy success，验证 RCA 记录流程" --confirm -- bash examples/toy_success.sh

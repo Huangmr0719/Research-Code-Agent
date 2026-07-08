@@ -1,32 +1,28 @@
 # Research-Code-Agent
 
-面向飞书 + OpenCode 场景下 AI 编程助手的科研实验工作流包。
+Research-Code-Agent is an OpenCode Skill for research experiment workflows.
 
-RCA 的核心目标不是做飞书机器人、bridge、多 Agent 平台或 OpenCode 替代品。第一版默认服务于“飞书自然语言入口 + OpenCode 执行科研项目”的使用场景，但 RCA 自身只负责让 OpenCode / Codex / Claude Code 进入科研代码项目后，能够安全、规范、可追踪地计划、运行、记录、总结和诊断实验。
+Research-Code-Agent 是面向 OpenCode 的科研实验工作流 Skill，用于让 OpenCode 在科研代码项目中安全地计划、运行、记录、总结和诊断实验。
+
+第一版默认服务于“飞书自然语言入口 + OpenCode 执行科研项目”的使用场景，但 RCA 本身不负责飞书接入。Feishu、opencode-feishu、botmux、systemd、tmux 等都是外部入口或运行设施；RCA 从 OpenCode 已进入项目目录之后开始工作。
 
 第一用户是在服务器上做深度学习实验、论文复现、baseline / ablation / metrics 整理的个人研究者。
 
 当前能力：
 
-- RCA project context: `AGENTS.md`, `RCA.md`, `.rca/profile.json`
-- RCA experiment index: `.rca/experiments.json`
-- RCA experiment launcher: `.rca/scripts/run_experiment.sh`
-- experiment wrapper（带状态捕获）
-- Feishu notification（卡片/文本）
-- log capture
-- summary.json / summary.md
-- summary-based experiment comparison
-- minimal paper context workflow
-- optional opencode-feishu Feishu entry workflow
-- legacy Python Feishu-OpenCode Bridge fallback
-- on-demand OpenCode analysis
-- project_results_adapter（项目级 metrics 适配）
-- toy success / failed / interrupted tests
-- Feishu smoke test
+- OpenCode global Skill: `skills/rca/SKILL.md`
+- RCA CLI: `bin/rca`
+- project-local context: `RCA.md`
+- project-local workspace: `.rca/`
+- structured profile: `.rca/profile.json`
+- experiment ledger: `.rca/experiments.json`
+- standard run wrapper: `.rca/scripts/run_experiment.sh`
+- consistency check: `rca check`
+- legacy optional tools under `tools/`
 
-技术栈：bash + Python 标准库。核心 RCA 工作流无外部依赖。飞书入口是可选外围能力：推荐 `NeverMore93/opencode-feishu`，自研 Python Feishu bridge 仅作为 legacy fallback，可能需要 Feishu Channel SDK Python（`lark-channel-sdk`）。不存储 Feishu 凭证。
+技术栈：bash + Python 标准库。核心 RCA 工作流无外部依赖。飞书入口是可选外围能力：推荐 `NeverMore93/opencode-feishu` 或 botmux；自研 Python Feishu bridge 仅作为 legacy fallback，可能需要 Feishu Channel SDK Python（`lark-channel-sdk`）。不存储 Feishu 凭证。
 
-当前 RCA 不做：飞书接入、消息卡片、WebSocket bridge、多机器人编排、Web terminal、Agent runtime、LLM provider 管理、复杂权限系统、重型 MLOps 平台、gateway、MCP、Hermes、botmux、Vercel Chat SDK、飞书 CLI、webhook、内网穿透、多平台抽象、Python command router。
+当前 RCA 不做：Feishu bridge、MCP Server、OpenCode Plugin、botmux 集成、多 CLI 平台、Dashboard、复杂 MLOps、消息卡片、WebSocket bridge、Web terminal、Agent runtime、LLM provider 管理、复杂权限系统、Python command router。
 
 ## Recommended Workflow
 
@@ -35,7 +31,7 @@ Use RCA after the AI coding assistant has initialized the project:
 ```text
 existing research code project
   -> OpenCode init / Codex project context
-  -> RCA init
+  -> rca init
   -> AI reads README, training/eval scripts, configs, data flow, outputs, paper materials
   -> AI fills RCA.md and .rca/profile.json
   -> user asks for an experiment in natural language
@@ -48,8 +44,8 @@ existing research code project
 
 Important rules:
 
-- Run OpenCode/project initialization first, then RCA init.
-- RCA init scaffolds context and workflow files; it is not a deep scanner.
+- Run OpenCode/project initialization first, then `rca init`.
+- `rca init` scaffolds context and workflow files; it is not a deep scanner.
 - The AI assistant should fill `RCA.md` and `.rca/profile.json` after reading the actual project.
 - RCA must propose an experiment plan before launching long experiments.
 - The user must explicitly confirm the plan; `.rca/scripts/run_experiment.sh` requires `--confirm`.
@@ -69,44 +65,37 @@ Make scripts executable:
 
 ```bash
 chmod +x ~/Research-Code-Agent/init_research_project.sh
+chmod +x ~/Research-Code-Agent/bin/rca
 chmod +x ~/Research-Code-Agent/tools/*.sh
 chmod +x ~/Research-Code-Agent/tools/*.py
 chmod +x ~/Research-Code-Agent/examples/*.sh
 ```
+
+Add `bin/` to `PATH` if you want to run `rca` directly:
+
+```bash
+export PATH="$HOME/Research-Code-Agent/bin:$PATH"
+```
+
+Install the OpenCode Skill by copying or symlinking `skills/rca/SKILL.md` into your OpenCode global skills directory according to your local OpenCode setup. This repository does not modify your home directory automatically.
 
 ## Initialize A Research Project
 
 From any research project root:
 
 ```bash
-~/Research-Code-Agent/init_research_project.sh
+rca init
 ```
 
-The init script creates:
+If `rca` is not on `PATH`, run:
+
+```bash
+~/Research-Code-Agent/bin/rca init
+```
+
+`rca init` creates:
 
 ```text
-tools/
-  run_with_feishu_notify.sh
-  feishu_notify.py
-  summarize_experiment.py
-  analyze_with_agent.py
-  compare_experiments.py
-  init_paper_context.sh
-  feishu_opencode_bridge.py
-  project_results_adapter.py
-  test_feishu_notify.sh
-templates/
-  PAPER_CONTEXT_TEMPLATE.md
-  feishu_bridge.env.example
-  opencode-feishu.plugin.example.json
-  feishu.plugin.example.json
-  systemd/
-    opencode-serve.service
-    rca-feishu-opencode-bridge.service
-docs/
-  rca-final-convergence.md
-  opencode-feishu-adoption.md
-  opencode-feishu-throwaway-test.md
 .rca/
   README.md
   profile.json
@@ -115,36 +104,30 @@ docs/
     run_experiment.sh
   runs/
   plans/
-logs/
-outputs/
-papers/
-experiments/
-  summaries/
-  runs/
-examples/
-  toy_success.sh
-  toy_failed.sh
-AGENTS.md
 RCA.md
-README_AGENT_WORKFLOW.md
 ```
 
-If `AGENTS.md` already exists, init appends a small `Research-Code-Agent` section instead of replacing the file. If `RCA.md`, `.rca/profile.json`, or `.rca/experiments.json` already exist, init leaves them untouched. Generic copied tools and docs still use the existing `.bak.<timestamp>` backup behavior.
+It does not modify source code, does not write secrets, and does not overwrite `RCA.md`, `.rca/profile.json`, or `.rca/experiments.json` unless `--force` is passed.
+
+The legacy `init_research_project.sh` remains for existing release users and copies the older optional `tools/`, docs, and Feishu-related templates. New v0.7.0 workflows should prefer `rca init`.
 
 ## Recommended Order After Init
 
 ```bash
-# 1. Initialize after your AI coding assistant has initialized the project
-bash init_research_project.sh
+# 1. Initialize after OpenCode has initialized/read the project
+rca init
 
 # 2. Ask the AI assistant to read RCA.md and fill project-specific context
 #    from README, train/eval scripts, configs, outputs, and paper materials.
 
 # 3. Run toy RCA recording test
+mkdir -p examples
+printf 'echo "UF1: 82.4"\n' > examples/toy_success.sh
+chmod +x examples/toy_success.sh
 ./.rca/scripts/run_experiment.sh --name toy_success --note "跑一次 toy success，验证 RCA 记录流程" --confirm -- bash examples/toy_success.sh
 
-# 4. Optional Feishu notification check
-./tools/test_feishu_notify.sh
+# 4. Check workspace consistency
+rca check
 ```
 
 ## Minimal Paper-Aware Workflow
@@ -210,10 +193,12 @@ Use the RCA launcher:
   -- python train.py --config configs/default.yaml
 ```
 
-The launcher preserves the existing notification/summary wrapper and also updates `.rca/experiments.json`.
-It refuses to run without `--confirm`, serializes experiment record updates with `.rca/run.lock`, and writes summary/index JSON files atomically.
+The launcher saves `command.sh`, `stdout.log`, `stderr.log`, timing metadata, `summary.json`, and updates `.rca/experiments.json`.
+It refuses to run without `--confirm`, uses a lock for ledger updates, and writes summary/index JSON files atomically.
 
-Lower-level wrapper, kept for compatibility:
+In `opencode.json`, configure `.rca/scripts/run_experiment.sh` as `ask`, not unconditional `allow`. RCA confirmation is the first boundary; OpenCode tool approval is the second boundary.
+
+Legacy lower-level wrapper, kept for compatibility:
 
 ```bash
 ./tools/run_with_feishu_notify.sh --name baseline_default -- python train.py --config configs/default.yaml
@@ -228,7 +213,7 @@ You can add an experiment note:
   -- python train.py --config configs/exp_042.yaml
 ```
 
-The wrapper records the note, start time, end time, duration, host, git commit, stdout/stderr log path, exit code, signal, metrics, log tail, and Agent Analysis.
+This legacy wrapper is optional and should not become a second experiment record path. The standard RCA path is `.rca/scripts/run_experiment.sh`.
 
 ## Feishu Smoke Test
 
@@ -471,6 +456,8 @@ The `.opencode/commands/` files are OpenCode action templates. They are not user
 
 See:
 
+- `docs/requirements.md`
+- `docs/implementation-plan.md`
 - `docs/rca-final-convergence.md`
 - `docs/opencode-native-simplification.md`
 - `docs/opencode-native-smoke-test.md`

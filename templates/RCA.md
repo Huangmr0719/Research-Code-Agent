@@ -1,105 +1,100 @@
 # Research-Code-Agent Context
 
-This file is the main context file for AI coding agents working on research experiments in this project.
+This is the AI-readable research README for this project. It is not meant to be a polished human-facing README.
 
-RCA does not replace OpenCode, Codex, Claude Code, or the project codebase. RCA only defines how an AI assistant should plan, run, record, summarize, compare, and diagnose experiments safely.
-
-## Operating Rules
+## 1. RCA Operating Rules
 
 - Read this file before research experiment tasks.
-- Propose an experiment plan before running any experiment.
-- Wait for user confirmation before launching long-running experiments.
-- Run long experiments through `.rca/scripts/run_experiment.sh --confirm` only after user confirmation.
-- Do not modify training, model, dataset, evaluation, or config code unless the user explicitly confirms the patch.
-- Preserve logs, summaries, and experiment records.
-- Update `.rca/experiments.json` after each experiment.
-- Rely on `.rca/scripts/run_experiment.sh` locking and atomic writes; do not edit `.rca/experiments.json` concurrently by hand.
-- Separate facts, inference, and recommendations in user-facing summaries.
+- Use `.rca/profile.json` as the structured project profile.
+- Use `.rca/experiments.json` as the experiment ledger.
+- Before running any experiment, present a plan and wait for explicit confirmation.
+- Run experiments only through `.rca/scripts/run_experiment.sh --confirm`.
+- Do not modify original source code unless explicitly approved.
+- Do not edit `.rca/experiments.json` concurrently by hand; the wrapper uses locking and atomic writes.
 
-## Project Profile
+## 2. Project Summary
 
-Fill this section during RCA init after reading the project README, training scripts, evaluation scripts, configs, data loading code, output code, and paper/reproduction materials.
+TODO: Fill after reading README, setup docs, package files, and repository structure.
 
-- Project type:
-- Main research task:
-- Main model / method:
-- Dataset(s):
-- Metric(s):
-- Training entrypoint(s):
-- Evaluation entrypoint(s):
-- Config mechanism:
-- Output directory:
-- Checkpoint directory:
+## 3. Research Goal
 
-## Code Structure
+TODO: Describe the main research problem, target task, and expected outcome.
 
-Record only the parts relevant to experiment planning and result extraction.
+## 4. Code Structure
+
+TODO: Record only experiment-relevant source layout.
 
 - Training code:
 - Evaluation code:
+- Model / method code:
 - Dataset / dataloader:
-- Model / method implementation:
 - Config files:
 - Scripts:
-- Result files:
+- Result output code:
 
-## Metrics And Result Extraction
+## 5. Training Entry Points
 
-Describe where reliable metrics come from.
+TODO: List train commands, required arguments, configs, and known defaults.
 
-- Preferred structured result files:
+## 6. Evaluation Entry Points
+
+TODO: List evaluation commands, metric scripts, checkpoints, and output files.
+
+## 7. Dataset and Data Flow
+
+TODO: Describe dataset name, paths, split protocol, preprocessing, dataloaders, and generated files.
+
+## 8. Metrics and Result Extraction
+
+TODO: Define primary metrics, where they appear, and stable extraction rules.
+
+- Primary metrics:
+- Structured result files:
 - Stable log patterns:
-- Checkpoint / artifact naming:
-- Known caveats:
+- Known metric caveats:
 
-## Paper / Reproduction Context
+## 9. Paper / Reproduction Context
 
-Put concise paper or reproduction context here when available. Do not create extra paper planning files unless the user asks.
+TODO: Summarize paper or reproduction context when available.
 
 - Paper / repo:
-- Baseline target:
+- Target baseline:
 - Main table(s):
-- Key ablation(s):
 - Expected metric(s):
 - Known reproduction gaps:
 
-## Experiment Planning Rules
+## 10. Baselines and Ablations
 
-Before running an experiment, present a short plan with:
+TODO: Record baseline configs, ablation factors, target comparisons, and table mapping.
 
-- Experiment purpose
-- User initial note
-- Command to execute
-- Dataset / config / checkpoint
-- Output directory
-- Expected artifacts
-- Resource and runtime risks
-- Metric extraction method
-- Failure diagnosis plan
+## 11. Output and Artifact Paths
 
-## Experiment Recording Rules
+TODO: Record logs, checkpoints, results, temporary outputs, and artifacts.
 
-Each run should create `.rca/runs/<run_id>/summary.json` and update `.rca/experiments.json`.
+## 12. Experiment Planning Rules
 
-The RCA wrapper uses `.rca/run.lock` and atomic replacement to avoid corrupting records during concurrent runs or interruptions.
+Every experiment plan must include:
 
-Each record should include:
+- experiment purpose;
+- proposed command;
+- dataset / config / checkpoint;
+- output directory;
+- expected artifacts;
+- risk and resource cost;
+- success metric extraction method;
+- failure diagnosis method;
+- `user_note_initial` in Chinese.
 
-- `run_id`
-- `created_at`
-- `status`
-- `task_type`
-- `user_note_initial`
-- `ai_note_final`
-- `command`
-- `dataset`
-- `config`
-- `metrics`
-- `artifacts`
-- `conclusion`
+Only unconditional confirmation counts. If the user adds changes, questions, conditions, or reservations, update the plan and wait for confirmation again.
 
-## Current Issues
+## 13. Experiment Ledger Rules
 
-Track unresolved project-specific issues here.
+Every run must create `.rca/runs/<run_id>/summary.json` and update `.rca/experiments.json`.
 
-- 
+The ledger is a JSON array. Use `rca check` if ledger records and run directories disagree.
+
+## 14. Known Risks and Open Questions
+
+TODO: Track unresolved project-specific risks.
+
+-

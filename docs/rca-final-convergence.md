@@ -4,9 +4,9 @@ This document records the current product boundary for Research-Code-Agent.
 
 ## Definition
 
-Research-Code-Agent is a research experiment workflow package for AI coding assistants in the Feishu + OpenCode research workflow.
+Research-Code-Agent is an OpenCode global Skill and project-local research experiment workspace.
 
-It helps OpenCode, Codex, Claude Code, or similar coding CLIs safely plan, run, record, summarize, compare, and diagnose experiments inside an existing research code project. Feishu can be the natural-language remote entry, but RCA does not own the Feishu bridge implementation.
+It helps OpenCode safely plan, run, record, summarize, compare, and diagnose experiments inside an existing research code project. Feishu can be the natural-language remote entry, but RCA does not own the Feishu bridge implementation.
 
 RCA is not a Feishu bot, bridge, multi-agent platform, web terminal, agent runtime, LLM provider manager, permission system, or MLOps platform.
 
@@ -29,7 +29,7 @@ Typical tasks:
 ```text
 existing research code project
   -> OpenCode init
-  -> RCA init
+  -> rca init
   -> AI reads README, train/eval scripts, configs, data flow, outputs, paper materials
   -> AI fills RCA.md and .rca/profile.json
   -> user asks for an experiment in natural language
@@ -120,4 +120,4 @@ Existing `tools/` scripts remain useful implementation helpers:
 - `tools/compare_experiments.py` compares summary records.
 - `tools/project_results_adapter.py` adapts project-specific metric extraction.
 
-The converged RCA entrypoint is `.rca/scripts/run_experiment.sh`, which can reuse these tools without making Feishu or bridge functionality part of the product core.
+The converged RCA entrypoint is `.rca/scripts/run_experiment.sh`. Feishu, bridge, and notification tooling are optional integration layers, not RCA core.
