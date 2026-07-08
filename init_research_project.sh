@@ -241,7 +241,7 @@ main() {
 Next step: ask your AI coding assistant to read RCA.md and fill the project profile.
 
 Primary RCA experiment launcher:
-  ./.rca/scripts/run_experiment.sh --name toy_success --note "跑一次 toy success，验证 RCA 记录流程" -- bash examples/toy_success.sh
+  ./.rca/scripts/run_experiment.sh --name toy_success --note "跑一次 toy success，验证 RCA 记录流程" --confirm -- bash examples/toy_success.sh
 
 Optional: run ./tools/test_feishu_notify.sh to verify Feishu notification.
 
@@ -251,7 +251,7 @@ Optional paper context:
   3. Ask your Agent to fill PAPER_CONTEXT.md based on the paper, README, and code.
 
 Toy test commands:
-  ./.rca/scripts/run_experiment.sh --name toy_success --note "跑一次 toy success，验证 RCA 记录流程" -- bash examples/toy_success.sh
+  ./.rca/scripts/run_experiment.sh --name toy_success --note "跑一次 toy success，验证 RCA 记录流程" --confirm -- bash examples/toy_success.sh
   ./tools/run_with_feishu_notify.sh --name toy_success --note "toy success notification check" -- bash examples/toy_success.sh
   ./tools/run_with_feishu_notify.sh --name toy_failed -- bash examples/toy_failed.sh
   ./tools/run_with_feishu_notify.sh --name toy_interrupt -- bash -c "sleep 60"

@@ -9,7 +9,8 @@ This repository uses the Research-Code-Agent workflow.
 - Use `.rca/profile.json` for structured project profile when available.
 - Use `.rca/experiments.json` as the first source for experiment history, comparison, and result lookup.
 - Before running a long experiment, propose a short experiment plan and wait for user confirmation.
-- Long experiments must run through `.rca/scripts/run_experiment.sh`.
+- Long experiments must run through `.rca/scripts/run_experiment.sh --confirm` after user confirmation.
+- `.rca/scripts/run_experiment.sh` serializes record updates with `.rca/run.lock` and writes summary/index JSON files atomically.
 - The lower-level `tools/run_with_feishu_notify.sh` wrapper may be used by `.rca/scripts/run_experiment.sh`, but it is not the preferred user-facing entrypoint.
 - Each experiment must preserve a per-run summary under `.rca/runs/<run_id>/summary.json` and update `.rca/experiments.json`.
 - Do not modify core training, model, dataset, evaluation, or config code unless the user explicitly confirms the patch.
@@ -137,6 +138,7 @@ Use:
 ./.rca/scripts/run_experiment.sh \
   --name baseline_default \
   --note "跑一次默认 baseline，作为后续实验对照" \
+  --confirm \
   --task-type baseline \
   --config configs/default.yaml \
   -- python train.py --config configs/default.yaml

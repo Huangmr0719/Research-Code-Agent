@@ -1,8 +1,8 @@
 # Research-Code-Agent
 
-面向 AI 编程助手的科研实验工作流包。
+面向飞书 + OpenCode 场景下 AI 编程助手的科研实验工作流包。
 
-RCA 的核心目标不是做飞书机器人、bridge、多 Agent 平台或 OpenCode 替代品。它只负责让 OpenCode / Codex / Claude Code 进入科研代码项目后，能够安全、规范、可追踪地计划、运行、记录、总结和诊断实验。
+RCA 的核心目标不是做飞书机器人、bridge、多 Agent 平台或 OpenCode 替代品。第一版默认服务于“飞书自然语言入口 + OpenCode 执行科研项目”的使用场景，但 RCA 自身只负责让 OpenCode / Codex / Claude Code 进入科研代码项目后，能够安全、规范、可追踪地计划、运行、记录、总结和诊断实验。
 
 第一用户是在服务器上做深度学习实验、论文复现、baseline / ablation / metrics 整理的个人研究者。
 
@@ -52,7 +52,9 @@ Important rules:
 - RCA init scaffolds context and workflow files; it is not a deep scanner.
 - The AI assistant should fill `RCA.md` and `.rca/profile.json` after reading the actual project.
 - RCA must propose an experiment plan before launching long experiments.
+- The user must explicitly confirm the plan; `.rca/scripts/run_experiment.sh` requires `--confirm`.
 - Long experiments must go through `.rca/scripts/run_experiment.sh`.
+- `.rca/scripts/run_experiment.sh` uses `.rca/run.lock` and atomic file replacement for per-run summaries and `.rca/experiments.json`.
 - `.rca/experiments.json` is the first local source for later comparison and result lookup.
 
 ## Install Once
@@ -139,7 +141,7 @@ bash init_research_project.sh
 #    from README, train/eval scripts, configs, outputs, and paper materials.
 
 # 3. Run toy RCA recording test
-./.rca/scripts/run_experiment.sh --name toy_success --note "跑一次 toy success，验证 RCA 记录流程" -- bash examples/toy_success.sh
+./.rca/scripts/run_experiment.sh --name toy_success --note "跑一次 toy success，验证 RCA 记录流程" --confirm -- bash examples/toy_success.sh
 
 # 4. Optional Feishu notification check
 ./tools/test_feishu_notify.sh
@@ -202,12 +204,14 @@ Use the RCA launcher:
 ./.rca/scripts/run_experiment.sh \
   --name baseline_default \
   --note "跑一次默认 baseline，作为后续实验对照" \
+  --confirm \
   --task-type baseline \
   --config configs/default.yaml \
   -- python train.py --config configs/default.yaml
 ```
 
 The launcher preserves the existing notification/summary wrapper and also updates `.rca/experiments.json`.
+It refuses to run without `--confirm`, serializes experiment record updates with `.rca/run.lock`, and writes summary/index JSON files atomically.
 
 Lower-level wrapper, kept for compatibility:
 

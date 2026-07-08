@@ -4,7 +4,7 @@ set -Eeuo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  ./.rca/scripts/run_experiment.sh --name RUN_NAME --note "中文实验备注" [options] -- COMMAND [ARGS...]
+  ./.rca/scripts/run_experiment.sh --name RUN_NAME --note "中文实验备注" --confirm [options] -- COMMAND [ARGS...]
 
 Options:
   --name NAME        Short experiment name, for example baseline_default
@@ -12,11 +12,13 @@ Options:
   --task-type TYPE   Optional task type, for example baseline or ablation
   --dataset NAME     Optional dataset name
   --config PATH      Optional config path
+  --confirm          Required after the user explicitly confirms the experiment plan
 
 Example:
   ./.rca/scripts/run_experiment.sh \
     --name baseline_default \
     --note "跑一次原始 baseline，后面做消融对照" \
+    --confirm \
     --task-type baseline \
     --config configs/default.yaml \
     -- python train.py --config configs/default.yaml
@@ -28,6 +30,7 @@ USER_NOTE_INITIAL=""
 TASK_TYPE=""
 DATASET=""
 CONFIG_PATH=""
+CONFIRMED=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -51,6 +54,10 @@ while [[ $# -gt 0 ]]; do
       CONFIG_PATH="${2:-}"
       shift 2
       ;;
+    --confirm)
+      CONFIRMED=1
+      shift
+      ;;
     --)
       shift
       break
@@ -67,21 +74,37 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$RUN_NAME" || -z "$USER_NOTE_INITIAL" || $# -eq 0 ]]; then
+if [[ -z "$RUN_NAME" || -z "$USER_NOTE_INITIAL" || "$CONFIRMED" -ne 1 || $# -eq 0 ]]; then
   usage >&2
   exit 2
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+EXPERIMENTS_JSON="$PROJECT_DIR/.rca/experiments.json"
+LEGACY_WRAPPER="$PROJECT_DIR/tools/run_with_feishu_notify.sh"
+LOCK_DIR="$PROJECT_DIR/.rca/run.lock"
+
+mkdir -p "$PROJECT_DIR/.rca/runs" "$PROJECT_DIR/.rca/plans" "$PROJECT_DIR/.rca/tmp"
+
+cleanup_lock() {
+  if [[ -n "${LOCK_ACQUIRED:-}" ]]; then
+    rmdir "$LOCK_DIR" 2>/dev/null || true
+  fi
+}
+
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  printf 'Another RCA experiment is already running. Lock: %s\n' "$LOCK_DIR" >&2
+  exit 1
+fi
+LOCK_ACQUIRED=1
+trap cleanup_lock EXIT INT TERM
+
 TIMESTAMP="$(date +"%Y%m%d_%H%M%S")"
 RUN_ID="${TIMESTAMP}_${RUN_NAME}"
 RUN_DIR="$PROJECT_DIR/.rca/runs/$RUN_ID"
-EXPERIMENTS_JSON="$PROJECT_DIR/.rca/experiments.json"
 SUMMARY_JSON="$PROJECT_DIR/experiments/summaries/${RUN_ID}.summary.json"
-LEGACY_WRAPPER="$PROJECT_DIR/tools/run_with_feishu_notify.sh"
-
-mkdir -p "$RUN_DIR" "$PROJECT_DIR/.rca/runs" "$PROJECT_DIR/.rca/plans"
+mkdir -p "$RUN_DIR"
 
 if [[ ! -x "$LEGACY_WRAPPER" ]]; then
   printf 'Missing executable wrapper: %s\n' "$LEGACY_WRAPPER" >&2
@@ -96,11 +119,12 @@ EXIT_CODE=$?
 set -e
 
 if [[ -f "$SUMMARY_JSON" ]]; then
-  cp "$SUMMARY_JSON" "$RUN_DIR/summary.json"
+  cp "$SUMMARY_JSON" "$RUN_DIR/summary.json.tmp"
 else
   printf '{"experiment_name":"%s","note":"%s","status":"failed","metrics":{},"facts":{"command":"%s"}}\n' \
-    "$RUN_ID" "$USER_NOTE_INITIAL" "$COMMAND_DISPLAY" > "$RUN_DIR/summary.json"
+    "$RUN_ID" "$USER_NOTE_INITIAL" "$COMMAND_DISPLAY" > "$RUN_DIR/summary.json.tmp"
 fi
+mv "$RUN_DIR/summary.json.tmp" "$RUN_DIR/summary.json"
 
 RCA_RUN_ID="$RUN_ID" \
 RCA_TASK_TYPE="$TASK_TYPE" \
@@ -163,7 +187,9 @@ record = {
 experiments[:] = [item for item in experiments if item.get("run_id") != run_id]
 experiments.append(record)
 index_path.parent.mkdir(parents=True, exist_ok=True)
-index_path.write_text(json.dumps(index, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+tmp_path = index_path.with_name(index_path.name + ".tmp")
+tmp_path.write_text(json.dumps(index, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+tmp_path.replace(index_path)
 PY
 
 printf 'RCA run recorded: %s\n' "$RUN_ID"

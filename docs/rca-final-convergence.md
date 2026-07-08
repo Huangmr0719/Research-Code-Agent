@@ -4,9 +4,9 @@ This document records the current product boundary for Research-Code-Agent.
 
 ## Definition
 
-Research-Code-Agent is a research experiment workflow package for AI coding assistants.
+Research-Code-Agent is a research experiment workflow package for AI coding assistants in the Feishu + OpenCode research workflow.
 
-It helps OpenCode, Codex, Claude Code, or similar coding CLIs safely plan, run, record, summarize, compare, and diagnose experiments inside an existing research code project.
+It helps OpenCode, Codex, Claude Code, or similar coding CLIs safely plan, run, record, summarize, compare, and diagnose experiments inside an existing research code project. Feishu can be the natural-language remote entry, but RCA does not own the Feishu bridge implementation.
 
 RCA is not a Feishu bot, bridge, multi-agent platform, web terminal, agent runtime, LLM provider manager, permission system, or MLOps platform.
 
@@ -80,7 +80,7 @@ Before running an experiment, the AI assistant should present:
 - metric extraction method;
 - failure diagnosis plan.
 
-Only after user confirmation should it run the experiment.
+Only after user confirmation should it run the experiment. The actual command must include `.rca/scripts/run_experiment.sh --confirm`.
 
 ## Experiment Record Rule
 
@@ -90,6 +90,8 @@ Every run should create:
 - an entry in `.rca/experiments.json`
 
 The global experiment index is the first local source for later experiment comparison, result lookup, and paper table drafting.
+
+`.rca/scripts/run_experiment.sh` must serialize writes with `.rca/run.lock` and use atomic replacement for `.rca/runs/<run_id>/summary.json` and `.rca/experiments.json`, so concurrent runs or interruptions do not leave partial JSON.
 
 ## Out Of Scope
 

@@ -9,10 +9,11 @@ RCA does not replace OpenCode, Codex, Claude Code, or the project codebase. RCA 
 - Read this file before research experiment tasks.
 - Propose an experiment plan before running any experiment.
 - Wait for user confirmation before launching long-running experiments.
-- Run long experiments through `.rca/scripts/run_experiment.sh`.
+- Run long experiments through `.rca/scripts/run_experiment.sh --confirm` only after user confirmation.
 - Do not modify training, model, dataset, evaluation, or config code unless the user explicitly confirms the patch.
 - Preserve logs, summaries, and experiment records.
 - Update `.rca/experiments.json` after each experiment.
+- Rely on `.rca/scripts/run_experiment.sh` locking and atomic writes; do not edit `.rca/experiments.json` concurrently by hand.
 - Separate facts, inference, and recommendations in user-facing summaries.
 
 ## Project Profile
@@ -79,6 +80,8 @@ Before running an experiment, present a short plan with:
 ## Experiment Recording Rules
 
 Each run should create `.rca/runs/<run_id>/summary.json` and update `.rca/experiments.json`.
+
+The RCA wrapper uses `.rca/run.lock` and atomic replacement to avoid corrupting records during concurrent runs or interruptions.
 
 Each record should include:
 
