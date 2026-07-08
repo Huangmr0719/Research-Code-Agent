@@ -359,6 +359,7 @@ def test_docs_and_templates() -> None:
     agents_section = (root / "templates" / "AGENTS_RCA_SECTION.md").read_text(encoding="utf-8")
     rca_context = (root / "templates" / "RCA.md").read_text(encoding="utf-8")
     rca_skill = (root / "skills" / "rca" / "SKILL.md").read_text(encoding="utf-8")
+    rca_check_script = (root / "bin" / "rca").read_text(encoding="utf-8")
     rca_readme = (root / "templates" / "rca" / "README.md").read_text(encoding="utf-8")
     rca_profile = (root / "templates" / "rca" / "profile.template.json").read_text(encoding="utf-8")
     rca_experiments = (root / "templates" / "rca" / "experiments.template.json").read_text(encoding="utf-8")
@@ -391,6 +392,9 @@ def test_docs_and_templates() -> None:
     assert "Confirmation Gate" in rca_skill
     assert "OpenCode Permission Boundary" in rca_skill
     assert "rca init" in rca_cli and "rca check" in rca_cli
+    assert "duplicate run_id in ledger" in rca_check_script
+    assert "failure.json" in rca_check_script
+    assert "top level must be an array" in rca_check_script
     assert "opencode-pty" in agents
     assert "Core RCA Workflow" in agents
     assert ".rca/scripts/run_experiment.sh" in agents
@@ -426,6 +430,7 @@ def test_docs_and_templates() -> None:
         "rca-final-convergence.md",
         "requirements.md",
         "implementation-plan.md",
+        "rca-validation-checklist.md",
         "opencode-feishu-adoption.md",
         "opencode-feishu-throwaway-test.md",
         "opencode-lark-evaluation.md",
@@ -438,7 +443,13 @@ def test_docs_and_templates() -> None:
     convergence = (root / "docs" / "rca-final-convergence.md").read_text(encoding="utf-8")
     assert "RCA is not a Feishu bot" in convergence
     assert ".rca/scripts/run_experiment.sh" in convergence
-    assert ".rca/run.lock" in convergence
+    assert ".rca/experiments.lock" in convergence
+    validation = (root / "docs" / "rca-validation-checklist.md").read_text(encoding="utf-8")
+    assert "确认执行，不过 output 目录改一下" in validation
+    assert "OpenCode bash permission should still ask" in validation
+    implementation = (root / "docs" / "implementation-plan.md").read_text(encoding="utf-8")
+    assert "Deferred / Intentionally Not Implemented" in implementation
+    assert "SQLite" in implementation
     adoption = (root / "docs" / "opencode-feishu-adoption.md").read_text(encoding="utf-8")
     assert "NeverMore93/opencode-feishu" in adoption
     assert "Python bridge remains available as a fallback" in adoption

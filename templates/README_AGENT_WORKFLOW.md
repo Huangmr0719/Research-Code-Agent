@@ -52,7 +52,7 @@ After initializing the project, verify Feishu notification:
 - Feishu receives `success`, `failed`, or `interrupted` notifications.
 - `summary.json` stores the user-provided `note`, top-level `status`, factual fields, metrics, log tail, and separate `analysis`.
 
-The RCA launcher uses `.rca/run.lock` and atomic replacement for `.rca/runs/<run_id>/summary.json` and `.rca/experiments.json`, so concurrent runs or interruptions do not leave partial JSON.
+The RCA launcher uses `.rca/experiments.lock` or `.rca/experiments.lockdir` and atomic replacement for `.rca/runs/<run_id>/summary.json` and `.rca/experiments.json`, so concurrent runs or interruptions do not leave partial JSON.
 
 The first version does not require modifying `train.py`. If later experiments need more stable metric parsing, make `train.py` write `metrics.json` or `result.json`; the summary script will prefer JSON metrics over regex log extraction.
 

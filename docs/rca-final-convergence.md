@@ -91,7 +91,7 @@ Every run should create:
 
 The global experiment index is the first local source for later experiment comparison, result lookup, and paper table drafting.
 
-`.rca/scripts/run_experiment.sh` must serialize writes with `.rca/run.lock` and use atomic replacement for `.rca/runs/<run_id>/summary.json` and `.rca/experiments.json`, so concurrent runs or interruptions do not leave partial JSON.
+`.rca/scripts/run_experiment.sh` must serialize ledger writes with `.rca/experiments.lock` or `.rca/experiments.lockdir` and use atomic replacement for `.rca/runs/<run_id>/summary.json` and `.rca/experiments.json`, so concurrent runs or interruptions do not leave partial JSON.
 
 ## Out Of Scope
 

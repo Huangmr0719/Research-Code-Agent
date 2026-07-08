@@ -92,3 +92,25 @@ Configure `.rca/scripts/run_experiment.sh` as `ask` in `opencode.json` bash perm
 ## Optional Integrations
 
 Feishu, `opencode-feishu`, botmux, systemd, tmux, and the legacy Python bridge are optional entry/runtime layers. They are not RCA core.
+
+## Deferred / Intentionally Not Implemented
+
+### OpenCode Plugin
+
+Not implemented in v0.7.x. RCA does not currently need to intercept OpenCode lifecycle events or change host behavior. Skill rules plus the project wrapper are enough. Reconsider a plugin only if RCA needs session-end validation, automatic ledger sync, or automatic notification hooks.
+
+### MCP Server
+
+Not implemented. RCA currently serves one OpenCode workflow and does not need to expose a protocol to multiple agents. Reconsider MCP only if LLM-Brain, Cline, Kilo, Codex, and other clients need shared access to the RCA experiment ledger.
+
+### Dashboard
+
+Not implemented. `experiments.json` plus conversational summaries are enough for the first version. Build a dashboard only when experiment volume requires interactive search and visualization.
+
+### SQLite
+
+Not implemented. JSON array plus file lock plus atomic replace is intentionally lightweight. Migrate to SQLite only when concurrent writes, query complexity, or experiment count clearly outgrow JSON.
+
+### Feishu Bridge / botmux Integration
+
+Not implemented as RCA core. Feishu and botmux are entry layers. RCA provides the OpenCode-side research experiment workflow after the agent enters the project.

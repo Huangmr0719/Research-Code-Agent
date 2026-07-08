@@ -50,7 +50,7 @@ Important rules:
 - RCA must propose an experiment plan before launching long experiments.
 - The user must explicitly confirm the plan; `.rca/scripts/run_experiment.sh` requires `--confirm`.
 - Long experiments must go through `.rca/scripts/run_experiment.sh`.
-- `.rca/scripts/run_experiment.sh` uses `.rca/run.lock` and atomic file replacement for per-run summaries and `.rca/experiments.json`.
+- `.rca/scripts/run_experiment.sh` uses `.rca/experiments.lock` or `.rca/experiments.lockdir` and atomic file replacement for per-run summaries and `.rca/experiments.json`.
 - `.rca/experiments.json` is the first local source for later comparison and result lookup.
 
 ## Install Once
